@@ -1,0 +1,20 @@
+# Artefatti dell'host: vanno (ri)generati dentro l'immagine, non copiati
+.git
+node_modules
+vendor
+.yarn
+files
+logs
+backup
+*.log
+
+# Config locali / runtime
+.env
+config.inc.php
+manifest.json
+checksum.json
+settings.json
+views.json
+modules.json
+mariadb.json
+mysql.json
