@@ -46,7 +46,7 @@ COPY . .
 # Inizializzazione directory e file di configurazione vuoti richiesti da OSM
 RUN git config --global --add safe.directory ${APP_DIR} \
     && mkdir -p ${APP_DIR}/files/temp ${APP_DIR}/logs \
-    && touch manifest.json mariadb.json mysql.json checksum.json settings.json views.json modules.json
+    && touch manifest.json mariadb.json mysql.json checksum.json settings.json views.json modules.json widgets.json
 
 # Dipendenze PHP
 RUN composer install --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
