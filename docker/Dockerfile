@@ -36,7 +36,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Composer dall'immagine ufficiale
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
 COPY docker/php.ini /usr/local/etc/php/
 
 WORKDIR ${APP_DIR}
