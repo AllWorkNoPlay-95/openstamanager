@@ -1,4 +1,4 @@
-FROM php:8.5-apache-bullseye
+FROM php:8.5-apache-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive \
     APP_DIR="/var/www/html"
@@ -35,7 +35,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Composer dall'immagine ufficiale
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
 COPY docker/php.ini /usr/local/etc/php/
 
 WORKDIR ${APP_DIR}
