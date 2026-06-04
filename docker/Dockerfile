@@ -48,6 +48,11 @@ RUN git config --global --add safe.directory ${APP_DIR} \
     && mkdir -p ${APP_DIR}/files/temp ${APP_DIR}/logs \
     && touch manifest.json mariadb.json mysql.json checksum.json settings.json views.json modules.json widgets.json
 
+# config.inc.php persistito su volume named (osm_config -> /osm-config), fuori dall'app tree
+# per non collidere con la dir applicativa /var/www/html/config usata da OSM.
+RUN mkdir -p /osm-config \
+    && ln -sf /osm-config/config.inc.php ${APP_DIR}/config.inc.php
+
 # Dipendenze PHP
 RUN composer install --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
 
@@ -58,8 +63,8 @@ RUN corepack enable \
     && npm run build-OSM
 
 # Permessi
-RUN chown -R www-data:www-data ${APP_DIR} \
+RUN chown -R www-data:www-data ${APP_DIR} /osm-config \
     && chmod -R 755 ${APP_DIR} \
-    && chmod -R 775 ${APP_DIR}/files ${APP_DIR}/logs
+    && chmod -R 775 ${APP_DIR}/files ${APP_DIR}/logs /osm-config
 
 EXPOSE 80
