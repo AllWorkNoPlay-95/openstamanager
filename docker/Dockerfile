@@ -1,9 +1,9 @@
 FROM php:8.5-apache-bullseye
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    LAST_VERSION_URL="https://api.github.com/repos/devcode-it/openstamanager/releases/latest" \
     APP_DIR="/var/www/html"
 
+# Dipendenze di sistema, estensioni PHP e Node.js 20
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     libcurl4-openssl-dev \
@@ -28,20 +28,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         xsl \
         zip \
     && a2enmod rewrite \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
-COPY php.ini /usr/local/etc/php/
+# Composer dall'immagine ufficiale
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+COPY docker/php.ini /usr/local/etc/php/
 
 WORKDIR ${APP_DIR}
 
-RUN last_version_v=$(curl -s ${LAST_VERSION_URL} | grep tag_name | cut -d '"' -f 4) && \
-    last_version=$(echo $last_version_v | sed 's/^v//') && \
-    wget -O openstamanager.zip "https://github.com/devcode-it/openstamanager/releases/download/${last_version_v}/openstamanager-${last_version}.zip" && \
-    unzip openstamanager.zip && \
-    mkdir -p ${APP_DIR}/files/temp ${APP_DIR}/logs && \
-    chown -R www-data:www-data ${APP_DIR} && \
-    chmod -R 750 ${APP_DIR} && \
-    rm openstamanager.zip
+# Source del nostro fork (branch kartiell): il build context deve essere la root OSM
+COPY . .
+
+# Inizializzazione directory e file di configurazione vuoti richiesti da OSM
+RUN git config --global --add safe.directory ${APP_DIR} \
+    && mkdir -p ${APP_DIR}/files/temp ${APP_DIR}/logs \
+    && touch manifest.json mariadb.json mysql.json checksum.json settings.json views.json modules.json
+
+# Dipendenze PHP
+RUN composer install --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+
+# Dipendenze Node e compilazione asset (produzione)
+RUN corepack enable \
+    && corepack prepare yarn@4.12.0 --activate \
+    && yarn install \
+    && npm run build-OSM
+
+# Permessi
+RUN chown -R www-data:www-data ${APP_DIR} \
+    && chmod -R 755 ${APP_DIR} \
+    && chmod -R 775 ${APP_DIR}/files ${APP_DIR}/logs
 
 EXPOSE 80
