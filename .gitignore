@@ -112,3 +112,4 @@ assets/api
 openapitools.json
 src/generated
 src/OpenAPI
+_docs
