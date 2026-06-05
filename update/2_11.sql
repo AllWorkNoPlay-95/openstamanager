@@ -1164,6 +1164,8 @@ ALTER TABLE `zz_permissions` CHANGE `idmodule` `id_module` INT NOT NULL;
 ALTER TABLE `zz_plugins` CHANGE `idmodule_from` `id_module_from` INT NOT NULL;
 ALTER TABLE `zz_plugins` CHANGE `idmodule_to` `id_module_to` INT NOT NULL;
 
+ALTER TABLE `in_interventi_tecnici` CHANGE `prezzo_dirittochiamata_tecnico` `prezzo_diritto_chiamata_tecnico` DECIMAL(15,6) NOT NULL;
+
 RENAME TABLE `co_ritenutaacconto` TO `co_ritenuta_acconto`;
 RENAME TABLE `an_tipianagrafiche` TO `an_tipi_anagrafiche`;
 RENAME TABLE `an_tipianagrafiche_anagrafiche` TO `an_tipi_anagrafiche_anagrafiche`;
@@ -1682,6 +1684,7 @@ UPDATE `zz_views` SET `query` = '`dt_aspetto_beni_lang`.`title`' WHERE `zz_views
 UPDATE `zz_views` SET `query` = '`in_stati_intervento`.`colore`' WHERE `zz_views`.`name` = "_bg_" AND `id_module` = (SELECT `id` FROM `zz_modules` WHERE `name` = 'Interventi');
 UPDATE `zz_views` SET `query` = '`in_stati_intervento_lang`.`title`' WHERE `zz_views`.`name` = "Stato" AND `id_module` = (SELECT `id` FROM `zz_modules` WHERE `name` = 'Interventi');
 UPDATE `zz_views` SET `query` = '`in_tipi_intervento_lang`.`title`' WHERE `zz_views`.`name` = "Tipo" AND `id_module` = (SELECT `id` FROM `zz_modules` WHERE `name` = 'Interventi');
+UPDATE `zz_views` SET `query` = 'IFNULL(SUM(`in_interventi_tecnici`.`prezzo_ore_unitario_tecnico`*`in_interventi_tecnici`.`ore` + `in_interventi_tecnici`.`prezzo_km_unitario_tecnico`*`in_interventi_tecnici`.`km` + `in_interventi_tecnici`.`prezzo_diritto_chiamata_tecnico`), 0) + IFNULL(`costo_righe`, 0)' WHERE `zz_views`.`name` = "Costi" AND `id_module` = (SELECT `id` FROM `zz_modules` WHERE `name` = 'Interventi');
 
 UPDATE `zz_views` SET `query` = '`dt_causale_t`.`id`' WHERE `zz_views`.`name` = "id" AND `id_module` = (SELECT `id` FROM `zz_modules` WHERE `name` = 'Causali');
 UPDATE `zz_views` SET `query` = '`dt_causale_t_lang`.`title`' WHERE `zz_views`.`name` = "Descrizione" AND `id_module` = (SELECT `id` FROM `zz_modules` WHERE `name` = 'Causali');
