@@ -97,6 +97,15 @@ abstract class CSVImporter implements ImporterInterface
         return array_shift($first_row);
     }
 
+    /**
+     * Numero totale di record presenti nel file CSV (intestazione inclusa).
+     * Usato dalla UI per calcolare la percentuale di avanzamento dell'importazione.
+     */
+    public function getTotalRows()
+    {
+        return count($this->csv);
+    }
+
     public function getRows($offset, $length)
     {
         $rows = [];
