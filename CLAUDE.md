@@ -14,6 +14,16 @@ alle regole del CLAUDE.md della cartella genitore (`../CLAUDE.md`).
   consultarla per le convenzioni del codebase. Questo `CLAUDE.md` riguarda invece **come operiamo
   noi sul fork**.
 
+## Naming: prefisso `mncs_` sulle colonne custom
+
+- Ogni **colonna DB** che aggiungiamo noi a una tabella del fork **DEVE** usare il prefisso
+  `mncs_` (es. `mncs_id_sede_partenza`).
+- Motivo: evita a monte le collisioni di nome con le colonne di upstream. Senza prefisso, una
+  colonna omonima a una già esistente (es. `id_sede_partenza` presente in `co_documenti`) rende
+  ambigue le query che fanno JOIN tra le due tabelle (errore SQL 1052 "Column ... is ambiguous").
+- Vale per colonne nuove su tabelle core esistenti. Per tabelle interamente nostre, prefissare
+  comunque le colonne è buona prassi ma non obbligatorio.
+
 ## Custom Modifications Documentation (CUSTOM.md)
 
 - Ogni nostra personalizzazione al fork **DEVE** essere documentata in modo strutturato in
