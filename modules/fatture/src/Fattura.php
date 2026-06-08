@@ -150,8 +150,8 @@ class Fattura extends Document
 
         // Override: sede aziendale predefinita dal tipo documento, se impostata.
         // Ha priorità sulla logica delle sedi utente; se null si mantiene il default sopra.
-        if ($tipo_documento->id_sede_predefinita !== null) {
-            $id_sede = (int) $tipo_documento->id_sede_predefinita;
+        if ($tipo_documento->id_sede_partenza !== null) {
+            $id_sede = (int) $tipo_documento->id_sede_partenza;
         }
 
         if ($direzione == 'entrata') {

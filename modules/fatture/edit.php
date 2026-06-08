@@ -422,7 +422,7 @@ if ($dir == 'entrata') {
 				<div class="col-md-3">
 					<!-- Nella realtà la fattura accompagnatoria non può esistere per la fatturazione elettronica, in quanto la risposta dal SDI potrebbe non essere immediata e le merci in viaggio. Dunque si può emettere una documento di viaggio valido per le merci ed eventualmente una fattura pro-forma per l'incasso della stessa, emettendo infine la fattura elettronica differita. -->
 
-					{[ "type": "select", "label": "<?php echo tr('Tipo documento'); ?>", "name": "id_tipo_documento", "required": 1, "values": "query=SELECT `co_tipi_documento`.`id`, CONCAT_WS(' - ',`codice_tipo_documento_fe`, `title`) AS descrizione, `co_tipi_documento`.`id_sede_predefinita`, IF(`co_tipi_documento`.`id_sede_predefinita` = 0, 'Sede legale', (SELECT `nome_sede` FROM `an_sedi` WHERE `an_sedi`.`id` = `co_tipi_documento`.`id_sede_predefinita`)) AS nome_sede FROM `co_tipi_documento` LEFT JOIN `co_tipi_documento_lang` ON (`co_tipi_documento`.`id` = `co_tipi_documento_lang`.`id_record` AND `co_tipi_documento_lang`.`id_lang` = <?php echo prepare(Locale::getDefault()->id); ?>) WHERE `dir`='<?php echo $dir; ?>' AND ((`reversed` = 0 AND `id_segment` ='<?php echo $record['id_segment']; ?>') OR `co_tipi_documento`.`id` = <?php echo $record['id_tipo_documento']; ?>) ORDER BY `codice_tipo_documento_fe`", "value": "$id_tipo_documento$", "readonly": <?php echo intval($fattura->stato->id != $id_stato_bozza && $fattura->stato->id != $id_stato_annullata); ?>, "help": "<?php echo ($database->fetchOne('SELECT tipo FROM an_anagrafiche WHERE id = '.prepare($record['id_anagrafica']))['tipo'] == 'Ente pubblico') ? 'FPA12 - fattura verso PA (Ente pubblico)' : 'FPR12 - fattura verso soggetti privati (Azienda o Privato)'; ?>" ]}
+					{[ "type": "select", "label": "<?php echo tr('Tipo documento'); ?>", "name": "id_tipo_documento", "required": 1, "values": "query=SELECT `co_tipi_documento`.`id`, CONCAT_WS(' - ',`codice_tipo_documento_fe`, `title`) AS descrizione, `co_tipi_documento`.`id_sede_partenza`, IF(`co_tipi_documento`.`id_sede_partenza` = 0, 'Sede legale', (SELECT `nome_sede` FROM `an_sedi` WHERE `an_sedi`.`id` = `co_tipi_documento`.`id_sede_partenza`)) AS nome_sede FROM `co_tipi_documento` LEFT JOIN `co_tipi_documento_lang` ON (`co_tipi_documento`.`id` = `co_tipi_documento_lang`.`id_record` AND `co_tipi_documento_lang`.`id_lang` = <?php echo prepare(Locale::getDefault()->id); ?>) WHERE `dir`='<?php echo $dir; ?>' AND ((`reversed` = 0 AND `id_segment` ='<?php echo $record['id_segment']; ?>') OR `co_tipi_documento`.`id` = <?php echo $record['id_tipo_documento']; ?>) ORDER BY `codice_tipo_documento_fe`", "value": "$id_tipo_documento$", "readonly": <?php echo intval($fattura->stato->id != $id_stato_bozza && $fattura->stato->id != $id_stato_annullata); ?>, "help": "<?php echo ($database->fetchOne('SELECT tipo FROM an_anagrafiche WHERE id = '.prepare($record['id_anagrafica']))['tipo'] == 'Ente pubblico') ? 'FPA12 - fattura verso PA (Ente pubblico)' : 'FPR12 - fattura verso soggetti privati (Azienda o Privato)'; ?>" ]}
 				</div>
 
 				<div class="col-md-3">
@@ -1041,8 +1041,8 @@ echo '
          session_set("superselect,id_tipo_documento",$(this).val(), 0);
 
          var tipoData = $(this).selectData();
-         if (tipoData && tipoData.id_sede_predefinita != null && tipoData.id_sede_predefinita !== "") {
-             $("#'.($dir == 'entrata' ? 'id_sede_partenza' : 'id_sede_destinazione').'").selectSetNew(tipoData.id_sede_predefinita, tipoData.nome_sede);
+         if (tipoData && tipoData.id_sede_partenza != null && tipoData.id_sede_partenza !== "") {
+             $("#'.($dir == 'entrata' ? 'id_sede_partenza' : 'id_sede_destinazione').'").selectSetNew(tipoData.id_sede_partenza, tipoData.nome_sede);
          }
     });
 

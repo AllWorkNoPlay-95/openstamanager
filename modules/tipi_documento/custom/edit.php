@@ -63,7 +63,7 @@ echo '
 		</div>
 
 		<div class="col-md-3">
-			{[ "type": "select", "label": "'.tr('Sede aziendale predefinita').'", "name": "id_sede_predefinita", "ajax-source": "sedi_azienda", "value": "$id_sede_predefinita$", "help": "'.tr('Sede impostata in automatico nei documenti di questo tipo. In vendita è la sede di partenza, in acquisto la sede di destinazione (arrivo). Vuoto = comportamento standard (sede utente).').'" ]}
+			{[ "type": "select", "label": "'.tr('Sede aziendale predefinita').'", "name": "id_sede_partenza", "ajax-source": "sedi_azienda", "value": "$id_sede_partenza$", "help": "'.tr('Sede impostata in automatico nei documenti di questo tipo. In vendita è la sede di partenza, in acquisto la sede di destinazione (arrivo). Vuoto = comportamento standard (sede utente).').'" ]}
 		</div>
 
         <div class="col-md-12">
