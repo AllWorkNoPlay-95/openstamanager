@@ -24,3 +24,8 @@ HAVING
     2=2
 ORDER BY
     `mg_articoli_lang`.`title`" WHERE `name` = "Articoli";
+-- Sede aziendale predefinita per tipo documento
+-- Valore NULL = nessun default (fallback alla logica sedi utente)
+-- Valore 0 = sede legale; valore > 0 = an_sedi.id
+ALTER TABLE `co_tipi_documento`
+  ADD `id_sede_partenza` INT NULL DEFAULT NULL AFTER `id_segment`;
