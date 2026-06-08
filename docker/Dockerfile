@@ -40,8 +40,30 @@ COPY docker/php.ini /usr/local/etc/php/
 
 WORKDIR ${APP_DIR}
 
-# Source del nostro fork (branch kartiell): il build context deve essere la root OSM
+# --- Dipendenze PHP ---
+# Copiando solo il manifest, questo layer (e il download dei pacchetti) resta in cache
+# finché composer.json non cambia: modificare il source PHP non lo invalida.
+# Nel repo non c'è composer.lock; l'autoloader viene installato vuoto qui e rigenerato
+# ottimizzato dopo il COPY del source (vedi sotto), per via di optimize-autoloader + autoload.files.
+COPY composer.json ./
+RUN composer install --no-ansi --no-interaction --no-scripts --no-autoloader --no-progress --prefer-dist
+
+# --- Dipendenze Node ---
+# Stesso principio: il layer si invalida solo se cambiano package.json o .yarnrc.yml,
+# non ad ogni modifica del source.
+COPY package.json .yarnrc.yml ./
+RUN corepack enable \
+    && corepack prepare yarn@4.12.0 --activate \
+    && yarn install
+
+# --- Source del nostro fork (branch kartiell): il build context deve essere la root OSM ---
+# Da qui in poi i layer si rifanno ad ogni modifica del codice, ma le dipendenze sopra
+# (vendor/ e node_modules/, esclusi da .dockerignore) restano in cache.
 COPY . .
+
+# Autoloader ottimizzato (richiede il source presente) e compilazione asset di produzione
+RUN composer dump-autoload --no-ansi --no-interaction --optimize --no-scripts \
+    && npm run build-OSM
 
 # Inizializzazione directory e file di configurazione vuoti richiesti da OSM
 RUN git config --global --add safe.directory ${APP_DIR} \
@@ -52,15 +74,6 @@ RUN git config --global --add safe.directory ${APP_DIR} \
 # per non collidere con la dir applicativa /var/www/html/config usata da OSM.
 RUN mkdir -p /osm-config \
     && ln -sf /osm-config/config.inc.php ${APP_DIR}/config.inc.php
-
-# Dipendenze PHP
-RUN composer install --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
-
-# Dipendenze Node e compilazione asset (produzione)
-RUN corepack enable \
-    && corepack prepare yarn@4.12.0 --activate \
-    && yarn install \
-    && npm run build-OSM
 
 # Permessi
 RUN chown -R www-data:www-data ${APP_DIR} /osm-config \
