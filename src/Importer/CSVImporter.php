@@ -21,6 +21,7 @@
 namespace Importer;
 
 use League\Csv\Reader;
+use League\Csv\Statement;
 
 /**
  * Classe dedicata alla gestione dell'importazione da file CSV.
@@ -99,14 +100,12 @@ abstract class CSVImporter implements ImporterInterface
     public function getRows($offset, $length)
     {
         $rows = [];
-        for ($i = 0; $i < $length; ++$i) {
-            // Lettura di una singola riga alla volta
-            $row = $this->csv->fetchOne($offset + $i);
-            if (empty($row)) {
-                break;
-            }
 
-            // Aggiunta all'insieme dei record
+        // Lettura del blocco in un'unica passata sequenziale.
+        // NB: chiamare fetchOne($offset + $i) in un ciclo è O(n²), perché league/csv
+        // ri-scorre il file dall'inizio ad ogni chiamata; Statement lo scorre una sola volta.
+        $statement = Statement::create()->offset((int) $offset)->limit((int) $length);
+        foreach ($statement->process($this->csv) as $row) {
             $rows[] = \Filter::parse($row);
         }
 
@@ -170,31 +169,44 @@ abstract class CSVImporter implements ImporterInterface
             $validated_records[] = $record;
         }
 
-        $batch_size = 100;
         $import_failed = 0;
-        foreach ($validated_records as $index => $record) {
-            $row = $validated_rows[$index];
 
-            try {
-                $result = $this->import($record, $update_record, $add_record);
+        // Un'unica transazione per batch: prima ogni riga eseguiva commit/fsync in autocommit.
+        // Tutto-o-niente per batch, con retry pulito grazie all'offset.
+        $database = database();
+        $database->beginTransaction();
+        try {
+            foreach ($validated_records as $index => $record) {
+                $row = $validated_rows[$index];
 
-                if ($result === false) {
+                try {
+                    $result = $this->import($record, $update_record, $add_record);
+
+                    if ($result === false) {
+                        $this->failed_records[] = $record;
+                        $this->failed_rows[] = $row;
+                        $this->failed_errors[] = 'Errore durante l\'importazione (errore sconosciuto)';
+                        ++$failed_count;
+                        ++$import_failed;
+                    } elseif ($result !== null) {
+                        ++$imported_count;
+                    }
+                } catch (\Exception $import_exception) {
+                    // Catch any exception during import and add to failed records with detailed error
                     $this->failed_records[] = $record;
                     $this->failed_rows[] = $row;
-                    $this->failed_errors[] = 'Errore durante l\'importazione (errore sconosciuto)';
+                    $this->failed_errors[] = 'Errore durante l\'importazione: '.$import_exception->getMessage();
                     ++$failed_count;
                     ++$import_failed;
-                } elseif ($result !== null) {
-                    ++$imported_count;
                 }
-            } catch (\Exception $import_exception) {
-                // Catch any exception during import and add to failed records with detailed error
-                $this->failed_records[] = $record;
-                $this->failed_rows[] = $row;
-                $this->failed_errors[] = 'Errore durante l\'importazione: '.$import_exception->getMessage();
-                ++$failed_count;
-                ++$import_failed;
             }
+
+            $database->commitTransaction();
+        } catch (\Throwable $batch_exception) {
+            // Errore non gestito a livello di batch: annulla l'intera transazione
+            $database->rollbackTransaction();
+
+            throw $batch_exception;
         }
 
         return [
