@@ -180,42 +180,31 @@ abstract class CSVImporter implements ImporterInterface
 
         $import_failed = 0;
 
-        // Un'unica transazione per batch: prima ogni riga eseguiva commit/fsync in autocommit.
-        // Tutto-o-niente per batch, con retry pulito grazie all'offset.
-        $database = database();
-        $database->beginTransaction();
-        try {
-            foreach ($validated_records as $index => $record) {
-                $row = $validated_rows[$index];
+        // Autocommit per riga (volutamente NON in un'unica transazione per batch): così i lock
+        // restano brevissimi e un import lento/abbandonato non blocca l'intera applicazione.
+        foreach ($validated_records as $index => $record) {
+            $row = $validated_rows[$index];
 
-                try {
-                    $result = $this->import($record, $update_record, $add_record);
+            try {
+                $result = $this->import($record, $update_record, $add_record);
 
-                    if ($result === false) {
-                        $this->failed_records[] = $record;
-                        $this->failed_rows[] = $row;
-                        $this->failed_errors[] = 'Errore durante l\'importazione (errore sconosciuto)';
-                        ++$failed_count;
-                        ++$import_failed;
-                    } elseif ($result !== null) {
-                        ++$imported_count;
-                    }
-                } catch (\Exception $import_exception) {
-                    // Catch any exception during import and add to failed records with detailed error
+                if ($result === false) {
                     $this->failed_records[] = $record;
                     $this->failed_rows[] = $row;
-                    $this->failed_errors[] = 'Errore durante l\'importazione: '.$import_exception->getMessage();
+                    $this->failed_errors[] = 'Errore durante l\'importazione (errore sconosciuto)';
                     ++$failed_count;
                     ++$import_failed;
+                } elseif ($result !== null) {
+                    ++$imported_count;
                 }
+            } catch (\Exception $import_exception) {
+                // Catch any exception during import and add to failed records with detailed error
+                $this->failed_records[] = $record;
+                $this->failed_rows[] = $row;
+                $this->failed_errors[] = 'Errore durante l\'importazione: '.$import_exception->getMessage();
+                ++$failed_count;
+                ++$import_failed;
             }
-
-            $database->commitTransaction();
-        } catch (\Throwable $batch_exception) {
-            // Errore non gestito a livello di batch: annulla l'intera transazione
-            $database->rollbackTransaction();
-
-            throw $batch_exception;
         }
 
         return [
