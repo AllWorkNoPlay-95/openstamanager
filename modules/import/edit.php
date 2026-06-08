@@ -399,10 +399,16 @@ function importPage(page) {
                 }
             }
         },
-        error: function(data) {
+        error: function(xhr) {
             $("#main_loading").fadeOut();
 
-            alert("'.tr('Errore').': " + data);
+            var message = (xhr && xhr.responseJSON && xhr.responseJSON.message) || (xhr && xhr.responseText) || (xhr && xhr.statusText) || "'.tr('Errore sconosciuto').'";
+
+            Swal.fire({
+                title: "'.tr('Errore').'",
+                text: message,
+                icon: "error",
+            });
         }
     });
 };
