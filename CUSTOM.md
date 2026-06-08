@@ -26,15 +26,24 @@ campo è vuoto.
 **Semantica:** il valore rappresenta la sede aziendale e viene mappato per direzione:
 `id_sede_partenza` per vendita (`dir=entrata`), `id_sede_destinazione` per acquisto (`dir=uscita`).
 
+> **FIX 2026-06-08 (post-UAT):** la colonna è stata **rinominata** `id_sede_partenza` →
+> `id_sede_predefinita`. Il nome originale collideva con `co_documenti.id_sede_partenza` (e le altre
+> tabelle documento) nelle query con JOIN `co_tipi_documento`↔`co_documenti`, causando l'errore
+> `1052 Column 'id_sede_partenza' in SELECT is ambiguous`. Col nome univoco ogni riferimento bare a
+> `id_sede_partenza` torna a risolversi solo su `co_documenti`. La tabella sotto riflette già il nome
+> nuovo. **Reconciliation DB già migrato:** applicare `update/2_11_2.sql`
+> (`ALTER TABLE co_tipi_documento CHANGE id_sede_partenza id_sede_predefinita INT NULL DEFAULT NULL`).
+
 **File toccati:**
 
 | File | Tipo | Modifica |
 |------|------|----------|
 | `update/2_11_1.sql` | `[CORE]` (nuovo) | `ALTER TABLE co_tipi_documento ADD id_sede_partenza INT NULL DEFAULT NULL AFTER id_segment`. NULL = nessun default; 0 = sede legale; >0 = `an_sedi.id`. |
-| `modules/tipi_documento/custom/edit.php` | `[CUSTOM]` (clone di `edit.php`) | Aggiunto select "Sede aziendale predefinita" (`name=id_sede_partenza`, `ajax-source=sedi_azienda`) accanto a "Sezionale predefinito". |
-| `modules/tipi_documento/custom/actions.php` | `[CUSTOM]` (clone di `actions.php`) | Nel `case 'update'`: persiste `id_sede_partenza` (`'' / null → null`, altrimenti `(int)`, così `0`=sede legale è preservato). |
-| `modules/fatture/src/Fattura.php` | `[CORE]` | In `build()`, dopo il calcolo di `$id_sede`: se `$tipo_documento->id_sede_partenza !== null` lo usa (priorità sulla logica sedi utente). |
-| `modules/fatture/edit.php` | `[CORE]` | (a) query del select `id_tipo_documento`: esposte le colonne `id_sede_partenza` e `nome_sede` (con `IF(...=0,'Sede legale', subquery an_sedi)`). (b) handler `$("#id_tipo_documento").change`: `selectSetNew` sul campo sede aziendale corretto per direzione. |
+| `update/2_11_2.sql` | `[CORE]` (nuovo) | Rinomina `id_sede_partenza` → `id_sede_predefinita` (fix ambiguità SQL 1052). Converge sia DB freschi sia già migrati. |
+| `modules/tipi_documento/custom/edit.php` | `[CUSTOM]` (clone di `edit.php`) | Aggiunto select "Sede aziendale predefinita" (`name=id_sede_predefinita`, `ajax-source=sedi_azienda`) accanto a "Sezionale predefinito". |
+| `modules/tipi_documento/custom/actions.php` | `[CUSTOM]` (clone di `actions.php`) | Nel `case 'update'`: persiste `id_sede_predefinita` (`'' / null → null`, altrimenti `(int)`, così `0`=sede legale è preservato). |
+| `modules/fatture/src/Fattura.php` | `[CORE]` | In `build()`, dopo il calcolo di `$id_sede`: se `$tipo_documento->id_sede_predefinita !== null` lo usa (priorità sulla logica sedi utente). |
+| `modules/fatture/edit.php` | `[CORE]` | (a) query del select `id_tipo_documento`: esposte le colonne `id_sede_predefinita` e `nome_sede` (con `IF(...=0,'Sede legale', subquery an_sedi)`). (b) handler `$("#id_tipo_documento").change`: `selectSetNew` sul campo sede del documento (`id_sede_partenza`/`id_sede_destinazione` per direzione) leggendo `tipoData.id_sede_predefinita`. |
 
 **Commit:**
 - `bf7367adb` — colonna `id_sede_partenza` (update 2_11_1)
@@ -43,6 +52,7 @@ campo è vuoto.
 - `1c59e4767` — auto-set in `Fattura::build()`
 - `0e985937b` — aggiornamento live al cambio tipo (`fatture/edit.php`)
 - `ecf05ab83` — spec + piano (`docs/superpowers/`)
+- _(fix post-UAT)_ — rename → `id_sede_predefinita` + `update/2_11_2.sql` (vedi nota FIX sopra)
 
 **Caveat / da ricontrollare al merge upstream:**
 - `[CORE] modules/fatture/src/Fattura.php` e `[CORE] modules/fatture/edit.php` sono file grandi e
