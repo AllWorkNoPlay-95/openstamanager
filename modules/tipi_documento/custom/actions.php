@@ -45,8 +45,8 @@ switch (filter('op')) {
                 $tipo->predefined = $predefined;
                 $tipo->enabled = post('enabled');
                 $tipo->id_segment = post('id_segment');
-                $sede_tipo = post('id_sede_partenza');
-                $tipo->id_sede_partenza = ($sede_tipo === '' || $sede_tipo === null) ? null : (int) $sede_tipo;
+                $sede_tipo = post('mncs_id_sede_partenza');
+                $tipo->mncs_id_sede_partenza = ($sede_tipo === '' || $sede_tipo === null) ? null : (int) $sede_tipo;
                 $tipo->save();
 
                 $tipo->setTranslation('title', $descrizione);

@@ -26,15 +26,20 @@ campo è vuoto.
 **Semantica:** il valore rappresenta la sede aziendale e viene mappato per direzione:
 `id_sede_partenza` per vendita (`dir=entrata`), `id_sede_destinazione` per acquisto (`dir=uscita`).
 
+> **Naming:** la nostra colonna usa il prefisso `mncs_` (→ `mncs_id_sede_partenza`) per evitare la
+> collisione con `co_documenti.id_sede_partenza` nelle query con JOIN (che dava errore SQL 1052
+> "ambiguous"). Vedi la convenzione `mncs_` in `CLAUDE.md`.
+
 **File toccati:**
 
 | File | Tipo | Modifica |
 |------|------|----------|
 | `update/2_11_1.sql` | `[CORE]` (nuovo) | `ALTER TABLE co_tipi_documento ADD id_sede_partenza INT NULL DEFAULT NULL AFTER id_segment`. NULL = nessun default; 0 = sede legale; >0 = `an_sedi.id`. |
-| `modules/tipi_documento/custom/edit.php` | `[CUSTOM]` (clone di `edit.php`) | Aggiunto select "Sede aziendale predefinita" (`name=id_sede_partenza`, `ajax-source=sedi_azienda`) accanto a "Sezionale predefinito". |
-| `modules/tipi_documento/custom/actions.php` | `[CUSTOM]` (clone di `actions.php`) | Nel `case 'update'`: persiste `id_sede_partenza` (`'' / null → null`, altrimenti `(int)`, così `0`=sede legale è preservato). |
-| `modules/fatture/src/Fattura.php` | `[CORE]` | In `build()`, dopo il calcolo di `$id_sede`: se `$tipo_documento->id_sede_partenza !== null` lo usa (priorità sulla logica sedi utente). |
-| `modules/fatture/edit.php` | `[CORE]` | (a) query del select `id_tipo_documento`: esposte le colonne `id_sede_partenza` e `nome_sede` (con `IF(...=0,'Sede legale', subquery an_sedi)`). (b) handler `$("#id_tipo_documento").change`: `selectSetNew` sul campo sede aziendale corretto per direzione. |
+| `update/2_11_2.sql` | `[CORE]` (nuovo) | `CHANGE id_sede_partenza mncs_id_sede_partenza` (applica il prefisso `mncs_`, risolve l'ambiguità SQL 1052). |
+| `modules/tipi_documento/custom/edit.php` | `[CUSTOM]` (clone di `edit.php`) | Aggiunto select "Sede aziendale predefinita" (`name=mncs_id_sede_partenza`, `ajax-source=sedi_azienda`) accanto a "Sezionale predefinito". |
+| `modules/tipi_documento/custom/actions.php` | `[CUSTOM]` (clone di `actions.php`) | Nel `case 'update'`: persiste `mncs_id_sede_partenza` (`'' / null → null`, altrimenti `(int)`, così `0`=sede legale è preservato). |
+| `modules/fatture/src/Fattura.php` | `[CORE]` | In `build()`, dopo il calcolo di `$id_sede`: se `$tipo_documento->mncs_id_sede_partenza !== null` lo usa (priorità sulla logica sedi utente). |
+| `modules/fatture/edit.php` | `[CORE]` | (a) query del select `id_tipo_documento`: esposte `mncs_id_sede_partenza` e `nome_sede` (con `IF(...=0,'Sede legale', subquery an_sedi)`). (b) handler `$("#id_tipo_documento").change`: `selectSetNew` sul campo sede del documento (`id_sede_partenza`/`id_sede_destinazione` per direzione) leggendo `tipoData.mncs_id_sede_partenza`. |
 
 **Commit:**
 - `bf7367adb` — colonna `id_sede_partenza` (update 2_11_1)
@@ -43,6 +48,7 @@ campo è vuoto.
 - `1c59e4767` — auto-set in `Fattura::build()`
 - `0e985937b` — aggiornamento live al cambio tipo (`fatture/edit.php`)
 - `ecf05ab83` — spec + piano (`docs/superpowers/`)
+- _revert_ `67e8bfca1` (iterazione errata: rename a `id_sede_predefinita`) + applicazione prefisso `mncs_` (colonna → `mncs_id_sede_partenza`, `update/2_11_2.sql`)
 
 **Caveat / da ricontrollare al merge upstream:**
 - `[CORE] modules/fatture/src/Fattura.php` e `[CORE] modules/fatture/edit.php` sono file grandi e
