@@ -24,6 +24,19 @@ alle regole del CLAUDE.md della cartella genitore (`../CLAUDE.md`).
 - Vale per colonne nuove su tabelle core esistenti. Per tabelle interamente nostre, prefissare
   comunque le colonne è buona prassi ma non obbligatorio.
 
+## Update SQL custom: sempre in `modules/mncs/update/`
+
+- Ogni nostro update di schema/dati **DEVE** stare in **`modules/mncs/update/`**, **mai** in
+  `update/` core. La cartella `update/` core è il namespace di upstream: un nostro file lì (es.
+  `update/2_11_1.sql`) collide con un futuro update omonimo di upstream → conflitto `git merge`.
+- OSM scansiona `modules/*/update/` come sequenza di versioni **indipendente**
+  (`Update::getCustomUpdates()`), namespacciata dalla colonna `directory` di `updates`. La nostra
+  sequenza è `modules/mncs/update/1_0.sql`, `1_1.sql`, …
+- Nomi **solo numerici** (`N_M.sql`): `isVersion` accetta solo `^\d+(?:\.\d+)+$`. Un suffisso tipo
+  `_mncs` rende la versione non valida e il file viene **ignorato in silenzio**.
+- Gli update custom girano **da zero su ogni installazione**: renderli **idempotenti**
+  (`ADD/CHANGE/DROP COLUMN IF [NOT] EXISTS`, `REPLACE`, guardie). Non assumere uno stato pregresso.
+
 ## Custom Modifications Documentation (CUSTOM.md)
 
 - Ogni nostra personalizzazione al fork **DEVE** essere documentata in modo strutturato in
