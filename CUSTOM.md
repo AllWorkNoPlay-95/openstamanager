@@ -16,6 +16,30 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-09 — Soppressione deprecation del motore PHP 8.5 (`E_DEPRECATED`)
+
+**Obiettivo:** eliminare i report di deprecazione del motore PHP 8.5 (es. *"Using null as an array
+offset is deprecated, use an empty string instead"* a `src/Modules.php:141`) senza modificare la
+logica dei singoli file core.
+
+**Modifica:** in `core.php:141` aggiunto `& ~E_DEPRECATED` alla `error_reporting(...)`. La riga
+escludeva già `E_USER_DEPRECATED`; ora esclude anche le deprecation del **motore** PHP (livello
+`E_DEPRECATED`), coerentemente col commento esistente *"Ignora gli avvertimenti... relativi alla
+deprecazione"*. `config.inc.php` viene incluso prima (riga 38) e `error_reporting` esplicito vince
+sul valore di `php.ini`, quindi questo è l'unico punto efficace di soppressione.
+
+**File toccati:**
+
+| File | Tipo | Modifica |
+|------|------|----------|
+| `core.php` | `[CORE]` | `error_reporting(...)`: aggiunto `& ~E_DEPRECATED` (soppressione globale deprecation motore PHP 8.5). |
+
+> **Caveat:** soppressione **globale** — nasconde tutte le deprecation del motore in tutta l'app,
+> incluse eventuali future segnalazioni reali di incompatibilità PHP 8.5 (non risolve le cause).
+> Al merge upstream verificare il diff su `core.php:141`.
+
+---
+
 ## 2026-06-08 — Sede aziendale predefinita sul tipo documento
 
 **Obiettivo:** associare a un tipo documento una sede aziendale predefinita, applicata
