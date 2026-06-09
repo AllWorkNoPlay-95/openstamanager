@@ -16,6 +16,48 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-09 — Fix listato/ricerca Articoli: derived table correlata incompatibile con MariaDB
+
+**Obiettivo:** sbloccare *Magazzino > Articoli*, che falliva all'apertura con errore AJAX
+`SQLSTATE[42S22] 1054 Unknown column 'mg_articoli_barcode.id_articolo' in 'WHERE'`.
+
+**Causa radice:** il sottoquery dei barcode (presente sia nel `zz_modules.options` del modulo
+Articoli sia nella ricerca articoli) usava una **derived table correlata** nel ramo `ELSE` del
+`CASE`:
+
+```sql
+ELSE CONCAT((SELECT GROUP_CONCAT(`b1`.`barcode` ...)
+            FROM (SELECT `barcode` FROM `mg_articoli_barcode` `b2`
+                  WHERE `b2`.`id_articolo` = `mg_articoli_barcode`.`id_articolo`  -- riferimento esterno
+                  ORDER BY `b2`.`barcode` ASC) `b1`)) END
+```
+
+La derived table `b2` referenzia il `mg_articoli_barcode` della query esterna. **MariaDB non
+supporta le lateral/correlated derived table** (nessuna versione), quindi non risolve la colonna
+→ errore 1054. La colonna `id_articolo` esiste: è un problema di **scope SQL**, non di nome.
+È un bug **upstream** (il costrutto è in `update/2_9_1.sql`/`2_11.sql`); emerge su questo fork
+perché gira su MariaDB (12.3.2), mentre upstream dichiara MariaDB ≥ 10.5 pienamente supportato.
+
+**Fix:** ramo `ELSE` sostituito da `GROUP_CONCAT(... ORDER BY ... SEPARATOR ...)`, equivalente nel
+risultato (elenco barcode dell'articolo, ordinati) e valido su MariaDB e MySQL.
+
+**File toccati:**
+
+| File | Tipo | Modifica |
+|------|------|----------|
+| `modules/articoli/ajax/search.php` | `[CORE]` | Riga 48: ramo `ELSE` del sottoquery barcode → `GROUP_CONCAT` ordinato (ricerca globale articoli). |
+| `update/2_11_3.sql` | `[CORE]` | **Nuovo file.** `UPDATE zz_modules ... REPLACE(options, ...)` sul modulo Articoli: stessa correzione sulla query di listato persistita nel DB. |
+
+**Commit collegati:** `03162cbb7`.
+
+> **Caveat (merge upstream):** è un bugfix su un costrutto **upstream**. Al merge ricontrollare
+> `update/2_9_1.sql` e `update/2_11.sql` (sorgenti originali del sottoquery rotto) e
+> `modules/articoli/ajax/search.php`. Inviata PR draft a upstream con la stessa correzione; se
+> accettata, al merge questa voce potrà essere ritirata. La fix DB live è già applicata su questo
+> ambiente; altri ambienti la ricevono eseguendo l'updater (`update/2_11_3.sql`).
+
+---
+
 ## 2026-06-09 — Soppressione deprecation del motore PHP 8.5 (`E_DEPRECATED`)
 
 **Obiettivo:** eliminare i report di deprecazione del motore PHP 8.5 (es. *"Using null as an array
