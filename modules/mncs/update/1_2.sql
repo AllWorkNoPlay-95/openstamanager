@@ -6,7 +6,8 @@
 --   id_sede > 0  -> `an_sedi.id`
 --
 -- Registra anche il modulo gestionale "Incassi conti" sotto Strumenti > Tabelle (puramente
--- additivo: nessun file core toccato). Idempotente: gira da zero su ogni installazione.
+-- additivo: nessun file core toccato). Schema OSM 2.11: il titolo del modulo e delle viste vive
+-- nelle tabelle `*_lang` (zz_modules non ha piu' la colonna `title`). Idempotente.
 
 -- 1) Tabella mappa --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `mncs_incassi_conti` (
@@ -20,51 +21,46 @@ CREATE TABLE IF NOT EXISTS `mncs_incassi_conti` (
   UNIQUE KEY `mncs_incassi_conti_pagamento_sede` (`id_pagamento`, `id_sede`)
 ) ENGINE=InnoDB;
 
--- 2) Modulo gestionale sotto "Tabelle" (additivo, idempotente) ------------------------------
+-- 2) Modulo gestionale sotto "Tabelle" (additivo, inserito solo se assente) ------------------
 SET @mncs_parent_tabelle := (SELECT `id` FROM `zz_modules` WHERE `name` = 'Tabelle' LIMIT 1);
-SET @mncs_mod_incassi := (SELECT `id` FROM `zz_modules` WHERE `name` = 'Incassi conti' LIMIT 1);
+SET @mncs_mod := (SELECT `id` FROM `zz_modules` WHERE `name` = 'Incassi conti' LIMIT 1);
 
 INSERT INTO `zz_modules`
-  (`name`, `title`, `directory`, `options`, `options2`, `icon`, `version`, `compatibility`, `order`, `parent`, `default`, `enabled`)
+  (`name`, `directory`, `attachments_directory`, `options`, `options2`, `icon`, `version`, `compatibility`, `order`, `parent`, `default`, `enabled`)
 SELECT
-  'Incassi conti',
-  'Incassi: conto per metodo e sede',
-  'mncs_incassi_conti',
+  'Incassi conti', 'mncs_incassi_conti', 'mncs_incassi_conti',
   'SELECT |select| FROM `mncs_incassi_conti` WHERE 1=1 HAVING 2=2',
-  '',
-  'fa fa-euro',
-  '2.11', '2.*', '10',
-  @mncs_parent_tabelle,
-  '1', '1'
+  '', 'fa fa-euro', '2.11', '2.11', 10,
+  @mncs_parent_tabelle, 1, 1
 FROM DUAL
-WHERE @mncs_mod_incassi IS NULL;
+WHERE @mncs_mod IS NULL;
 
--- (Ri)leggo l'id del modulo per le viste
-SET @mncs_mod_incassi := (SELECT `id` FROM `zz_modules` WHERE `name` = 'Incassi conti' LIMIT 1);
+SET @mncs_mod := (SELECT `id` FROM `zz_modules` WHERE `name` = 'Incassi conti' LIMIT 1);
 
--- 3) Colonne del listato (zz_views), ognuna guardata per idempotenza ------------------------
-SET @mncs_v := (SELECT `id` FROM `zz_views` WHERE `id_module` = @mncs_mod_incassi AND `name` = 'id' LIMIT 1);
-INSERT INTO `zz_views` (`id_module`, `name`, `query`, `order`, `search`, `slow`, `default`, `visible`)
-SELECT @mncs_mod_incassi, 'id', 'mncs_incassi_conti.id', 1, 1, 0, 1, 0
-FROM DUAL WHERE @mncs_v IS NULL;
+-- 3) Titolo del modulo (rebuild idempotente) ------------------------------------------------
+DELETE FROM `zz_modules_lang` WHERE `id_record` = @mncs_mod;
+INSERT INTO `zz_modules_lang` (`id_lang`, `id_record`, `title`, `meta_title`) VALUES
+  (1, @mncs_mod, 'Incassi conti', 'Incassi conti'),
+  (2, @mncs_mod, 'Payment accounts', 'Payment accounts');
 
-SET @mncs_v := (SELECT `id` FROM `zz_views` WHERE `id_module` = @mncs_mod_incassi AND `name` = 'Metodo di pagamento' LIMIT 1);
-INSERT INTO `zz_views` (`id_module`, `name`, `query`, `order`, `search`, `slow`, `default`, `visible`)
-SELECT @mncs_mod_incassi, 'Metodo di pagamento',
-  '(SELECT `name` FROM `co_pagamenti` WHERE `co_pagamenti`.`id` = `mncs_incassi_conti`.`id_pagamento`)',
-  2, 1, 0, 1, 1
-FROM DUAL WHERE @mncs_v IS NULL;
+-- 4) Colonne del listato (rebuild idempotente) ----------------------------------------------
+DELETE FROM `zz_views_lang` WHERE `id_record` IN (SELECT `id` FROM `zz_views` WHERE `id_module` = @mncs_mod);
+DELETE FROM `zz_views` WHERE `id_module` = @mncs_mod;
 
-SET @mncs_v := (SELECT `id` FROM `zz_views` WHERE `id_module` = @mncs_mod_incassi AND `name` = 'Sede' LIMIT 1);
-INSERT INTO `zz_views` (`id_module`, `name`, `query`, `order`, `search`, `slow`, `default`, `visible`)
-SELECT @mncs_mod_incassi, 'Sede',
-  'IF(`mncs_incassi_conti`.`id_sede` = 0, ''Sede legale'', (SELECT `nome_sede` FROM `an_sedi` WHERE `an_sedi`.`id` = `mncs_incassi_conti`.`id_sede`))',
-  3, 1, 0, 1, 1
-FROM DUAL WHERE @mncs_v IS NULL;
+INSERT INTO `zz_views` (`id_module`, `name`, `query`, `order`, `visible`) VALUES
+  (@mncs_mod, 'id', '`mncs_incassi_conti`.`id`', 1, 0),
+  (@mncs_mod, 'Metodo di pagamento', '(SELECT `name` FROM `co_pagamenti` WHERE `co_pagamenti`.`id` = `mncs_incassi_conti`.`id_pagamento`)', 2, 1),
+  (@mncs_mod, 'Sede', 'IF(`mncs_incassi_conti`.`id_sede` = 0, ''Sede legale'', (SELECT `nome_sede` FROM `an_sedi` WHERE `an_sedi`.`id` = `mncs_incassi_conti`.`id_sede`))', 3, 1),
+  (@mncs_mod, 'Conto', '(SELECT CONCAT(`co_piano_dei_conti2`.`numero`, ''.'', `co_piano_dei_conti3`.`numero`, '' '', `co_piano_dei_conti3`.`descrizione`) FROM `co_piano_dei_conti3` INNER JOIN `co_piano_dei_conti2` ON `co_piano_dei_conti3`.`id_piano_dei_conti2` = `co_piano_dei_conti2`.`id` WHERE `co_piano_dei_conti3`.`id` = `mncs_incassi_conti`.`id_conto`)', 4, 1);
 
-SET @mncs_v := (SELECT `id` FROM `zz_views` WHERE `id_module` = @mncs_mod_incassi AND `name` = 'Conto' LIMIT 1);
-INSERT INTO `zz_views` (`id_module`, `name`, `query`, `order`, `search`, `slow`, `default`, `visible`)
-SELECT @mncs_mod_incassi, 'Conto',
-  '(SELECT CONCAT(`co_piano_dei_conti2`.`numero`, ''.'', `co_piano_dei_conti3`.`numero`, '' '', `co_piano_dei_conti3`.`descrizione`) FROM `co_piano_dei_conti3` INNER JOIN `co_piano_dei_conti2` ON `co_piano_dei_conti3`.`id_piano_dei_conti2` = `co_piano_dei_conti2`.`id` WHERE `co_piano_dei_conti3`.`id` = `mncs_incassi_conti`.`id_conto`)',
-  4, 1, 0, 1, 1
-FROM DUAL WHERE @mncs_v IS NULL;
+-- 5) Titoli tradotti delle colonne ----------------------------------------------------------
+SET @mncs_v_id := (SELECT `id` FROM `zz_views` WHERE `id_module` = @mncs_mod AND `name` = 'id' LIMIT 1);
+SET @mncs_v_met := (SELECT `id` FROM `zz_views` WHERE `id_module` = @mncs_mod AND `name` = 'Metodo di pagamento' LIMIT 1);
+SET @mncs_v_sede := (SELECT `id` FROM `zz_views` WHERE `id_module` = @mncs_mod AND `name` = 'Sede' LIMIT 1);
+SET @mncs_v_conto := (SELECT `id` FROM `zz_views` WHERE `id_module` = @mncs_mod AND `name` = 'Conto' LIMIT 1);
+
+INSERT INTO `zz_views_lang` (`id_lang`, `id_record`, `title`) VALUES
+  (1, @mncs_v_id, 'id'),                    (2, @mncs_v_id, 'id'),
+  (1, @mncs_v_met, 'Metodo di pagamento'),  (2, @mncs_v_met, 'Payment method'),
+  (1, @mncs_v_sede, 'Sede'),                (2, @mncs_v_sede, 'Location'),
+  (1, @mncs_v_conto, 'Conto'),              (2, @mncs_v_conto, 'Account');
