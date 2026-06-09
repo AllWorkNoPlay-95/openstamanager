@@ -31,9 +31,3 @@ ALTER TABLE `em_list_receiver` DROP FOREIGN KEY `em_list_receiver_ibfk_1`; ALTER
 UPDATE `em_lists` SET `query` = "SELECT id, 'Modules\\\\Anagrafiche\\\\Anagrafica' AS tipo_lista FROM an_anagrafiche WHERE deleted_at IS NULL" WHERE `name` = "Tutte le Anagrafiche (Sedi legali)";
 
 UPDATE `em_lists` SET `query` = "SELECT id, 'Modules\\\\Anagrafiche\\\\Referente' AS tipo_lista FROM an_referenti" WHERE `name` = "Tutti i Referenti";
-
--- Sede aziendale predefinita per tipo documento
--- Valore NULL = nessun default (fallback alla logica sedi utente)
--- Valore 0 = sede legale; valore > 0 = an_sedi.id
-ALTER TABLE `co_tipi_documento`
-  ADD `id_sede_partenza` INT NULL DEFAULT NULL AFTER `id_segment`;
