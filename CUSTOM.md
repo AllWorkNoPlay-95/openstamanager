@@ -16,6 +16,29 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-09 — Footer: branding "Fork MNCS per Kartiell Verona SRL"
+
+**Obiettivo:** nel footer dell'interfaccia, a destra resta la versione attuale ma la dicitura tra
+parentesi non deve più essere `In sviluppo` (mostrata quando non c'è una revision) bensì
+`Fork MNCS per Kartiell Verona SRL`.
+
+**Soluzione:** override CUSTOM invece di toccare il core. Il footer è incluso via
+`App::filepath('include|custom|', 'bottom.php')` (`src/App.php:323`), che usa
+`include/custom/bottom.php` se esiste, altrimenti `include/bottom.php`. Creato l'override come copia
+del core con la sola riga della parentesi modificata.
+
+**File toccati:**
+- `include/custom/bottom.php` `[CUSTOM]` — nuovo override (copia di `include/bottom.php`). Cambiata
+  solo la riga `<small>` del footer: da
+  `('.(!empty($revision) ? $revision : tr('In sviluppo')).')` a
+  `('.tr('Fork MNCS per Kartiell Verona SRL').')`.
+
+**Caveat:** essendo una copia integrale del core, `include/custom/bottom.php` **non** riceve i
+bugfix upstream di `include/bottom.php`. Ad ogni merge upstream ri-allineare manualmente il resto
+del file, mantenendo solo la riga del footer modificata.
+
+---
+
 ## 2026-06-09 — Convenzione: gli update SQL custom vivono in `modules/mncs/update/`
 
 **Obiettivo:** evitare la collisione di numerazione tra i nostri update e quelli di upstream.
