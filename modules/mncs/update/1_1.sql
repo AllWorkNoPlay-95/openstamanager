@@ -1,10 +1,13 @@
--- Corregge la query di listato del modulo Articoli: il sottoquery dei barcode usava
--- una derived table correlata (SELECT ... FROM (SELECT ... FROM `mg_articoli_barcode` `b2`
+-- Corregge la query di listato del modulo Articoli: il sottoquery dei barcode usava una
+-- derived table correlata (SELECT ... FROM (SELECT ... FROM `mg_articoli_barcode` `b2`
 -- WHERE `b2`.`id_articolo` = `mg_articoli_barcode`.`id_articolo` ...) `b1`), costrutto NON
 -- supportato da MariaDB (nessuna lateral/correlated derived table) -> errore 1054
 -- "Unknown column 'mg_articoli_barcode.id_articolo' in 'WHERE'" all'apertura di Magazzino > Articoli.
+-- Ex `update/2_11_3.sql` del fork, spostato nel namespace del modulo custom `mncs`.
+--
 -- Il ramo ELSE viene sostituito da un GROUP_CONCAT ordinato, equivalente nel risultato
 -- (elenco dei barcode dell'articolo, ordinati) ma valido su MariaDB e MySQL.
+-- Idempotente: la REPLACE è un no-op se il frammento è già stato corretto.
 UPDATE `zz_modules`
 SET `options` = REPLACE(
     `options`,

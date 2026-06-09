@@ -16,6 +16,35 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-09 — Convenzione: gli update SQL custom vivono in `modules/mncs/update/`
+
+**Obiettivo:** evitare la collisione di numerazione tra i nostri update e quelli di upstream.
+I file in `update/` core sono nel namespace di upstream (es. un nostro `update/2_11_1.sql` collide
+con un futuro `2_11_1.sql` di upstream → conflitto `git merge`).
+
+**Soluzione:** OSM scansiona anche `modules/*/update/` e `plugins/*/update/`
+(`Update::getCustomUpdates()`, `src/Update.php:592`) come sequenza di versioni **indipendente**,
+namespacciata dalla colonna `directory` della tabella `updates`. I nostri update SQL custom vanno
+quindi in **`modules/mncs/update/`** con numerazione propria (`1_0.sql`, `1_1.sql`, …).
+
+> **Regola:** mai mettere update nostri in `update/` core. Sempre `modules/mncs/update/N_M.sql`,
+> nomi **solo numerici** (`isVersion` accetta solo `^\d+(?:\.\d+)+$`: un suffisso tipo `_mncs`
+> renderebbe la versione `…mncs` e il file verrebbe **ignorato in silenzio**). Renderli **idempotenti**
+> (`IF [NOT] EXISTS`, `REPLACE`, guardie) perché girano da zero su ogni installazione.
+
+**Migrazione fatta ora:** i 3 ex update fork in `update/` sono stati spostati e consolidati:
+
+| Prima (core `update/`) | Dopo (`modules/mncs/update/`) |
+|------|------|
+| `2_11_1.sql` + `2_11_2.sql` (add `id_sede_partenza` + rename `mncs_`) | `1_0.sql` (consolidato, idempotente: garantisce `mncs_id_sede_partenza`) |
+| `2_11_3.sql` (fix barcode Articoli) | `1_1.sql` (invariato, `REPLACE` idempotente) |
+
+> **Caveat (riesecuzione):** spostando i file cambia il path → l'updater li vede come "mai eseguiti"
+> e li **rieseguirà** una volta su ogni ambiente, anche dove i vecchi giravano già. Per questo `1_0`
+> è idempotente (la coppia add+rename non era ri-eseguibile come due passi: consolidata in uno solo).
+
+---
+
 ## 2026-06-09 — Fix listato/ricerca Articoli: derived table correlata incompatibile con MariaDB
 
 **Obiettivo:** sbloccare *Magazzino > Articoli*, che falliva all'apertura con errore AJAX
@@ -46,15 +75,16 @@ risultato (elenco barcode dell'articolo, ordinati) e valido su MariaDB e MySQL.
 | File | Tipo | Modifica |
 |------|------|----------|
 | `modules/articoli/ajax/search.php` | `[CORE]` | Riga 48: ramo `ELSE` del sottoquery barcode → `GROUP_CONCAT` ordinato (ricerca globale articoli). |
-| `update/2_11_3.sql` | `[CORE]` | **Nuovo file.** `UPDATE zz_modules ... REPLACE(options, ...)` sul modulo Articoli: stessa correzione sulla query di listato persistita nel DB. |
+| `modules/mncs/update/1_1.sql` | `[CUSTOM]` | **Nuovo file** (ex `update/2_11_3.sql`). `UPDATE zz_modules ... REPLACE(options, ...)` sul modulo Articoli: stessa correzione sulla query di listato persistita nel DB. |
 
-**Commit collegati:** `03162cbb7`.
+**Commit collegati:** `03162cbb7` (fix originale), + commit di spostamento in `modules/mncs/update/`.
 
 > **Caveat (merge upstream):** è un bugfix su un costrutto **upstream**. Al merge ricontrollare
 > `update/2_9_1.sql` e `update/2_11.sql` (sorgenti originali del sottoquery rotto) e
-> `modules/articoli/ajax/search.php`. Inviata PR draft a upstream con la stessa correzione; se
-> accettata, al merge questa voce potrà essere ritirata. La fix DB live è già applicata su questo
-> ambiente; altri ambienti la ricevono eseguendo l'updater (`update/2_11_3.sql`).
+> `modules/articoli/ajax/search.php`. Inviata PR draft a upstream con la stessa correzione
+> (devcode-it/openstamanager#1837); se accettata, al merge questa voce potrà essere ritirata. La fix
+> DB live è già applicata su questo ambiente; altri ambienti la ricevono eseguendo l'updater
+> (`modules/mncs/update/1_1.sql`).
 
 ---
 
@@ -100,21 +130,20 @@ campo è vuoto.
 
 | File | Tipo | Modifica |
 |------|------|----------|
-| `update/2_11_1.sql` | `[CORE]` (nuovo) | `ALTER TABLE co_tipi_documento ADD id_sede_partenza INT NULL DEFAULT NULL AFTER id_segment`. NULL = nessun default; 0 = sede legale; >0 = `an_sedi.id`. |
-| `update/2_11_2.sql` | `[CORE]` (nuovo) | `CHANGE id_sede_partenza mncs_id_sede_partenza` (applica il prefisso `mncs_`, risolve l'ambiguità SQL 1052). |
+| `modules/mncs/update/1_0.sql` | `[CUSTOM]` (nuovo) | Consolida ex `update/2_11_1.sql`+`2_11_2.sql` in un unico step idempotente: garantisce `co_tipi_documento.mncs_id_sede_partenza INT NULL DEFAULT NULL`. NULL = nessun default; 0 = sede legale; >0 = `an_sedi.id`. Prefisso `mncs_` per evitare l'ambiguità SQL 1052. |
 | `modules/tipi_documento/custom/edit.php` | `[CUSTOM]` (clone di `edit.php`) | Aggiunto select "Sede aziendale predefinita" (`name=mncs_id_sede_partenza`, `ajax-source=sedi_azienda`) accanto a "Sezionale predefinito". |
 | `modules/tipi_documento/custom/actions.php` | `[CUSTOM]` (clone di `actions.php`) | Nel `case 'update'`: persiste `mncs_id_sede_partenza` (`'' / null → null`, altrimenti `(int)`, così `0`=sede legale è preservato). |
 | `modules/fatture/src/Fattura.php` | `[CORE]` | In `build()`, dopo il calcolo di `$id_sede`: se `$tipo_documento->mncs_id_sede_partenza !== null` lo usa (priorità sulla logica sedi utente). |
 | `modules/fatture/edit.php` | `[CORE]` | (a) query del select `id_tipo_documento`: esposte `mncs_id_sede_partenza` e `nome_sede` (con `IF(...=0,'Sede legale', subquery an_sedi)`). (b) handler `$("#id_tipo_documento").change`: `selectSetNew` sul campo sede del documento (`id_sede_partenza`/`id_sede_destinazione` per direzione) leggendo `tipoData.mncs_id_sede_partenza`. |
 
 **Commit:**
-- `bf7367adb` — colonna `id_sede_partenza` (update 2_11_1)
+- `bf7367adb` — colonna `id_sede_partenza` (ex update 2_11_1, ora consolidata in `modules/mncs/update/1_0.sql`)
 - `8815c1289` — campo sede aziendale predefinita (custom edit)
 - `b6040e2d9` — persistenza id_sede_partenza (custom actions)
 - `1c59e4767` — auto-set in `Fattura::build()`
 - `0e985937b` — aggiornamento live al cambio tipo (`fatture/edit.php`)
 - `ecf05ab83` — spec + piano (`docs/superpowers/`)
-- _revert_ `67e8bfca1` (iterazione errata: rename a `id_sede_predefinita`) + applicazione prefisso `mncs_` (colonna → `mncs_id_sede_partenza`, `update/2_11_2.sql`)
+- _revert_ `67e8bfca1` (iterazione errata: rename a `id_sede_predefinita`) + applicazione prefisso `mncs_` (colonna → `mncs_id_sede_partenza`, ex `update/2_11_2.sql`, ora in `modules/mncs/update/1_0.sql`)
 
 **Caveat / da ricontrollare al merge upstream:**
 - `[CORE] modules/fatture/src/Fattura.php` e `[CORE] modules/fatture/edit.php` sono file grandi e
@@ -129,6 +158,7 @@ campo è vuoto.
   L'override incide solo su **creazione fattura** e **autofattura** (comportamento voluto).
 - Accesso `$tipo_documento->id_sede_partenza` è sicuro anche **prima** che la migrazione sia
   applicata (Eloquent ritorna `null` per attributi assenti, non lancia errore).
-- **Convenzione versioni (AGENTS.md):** i file `PATCH` (`2_11_1`) "non dovrebbero contenere
-  feature". Qui `2_11_1.sql` contiene un `ALTER` di feature: deviazione consapevole rispetto alla
-  convenzione upstream. Valutare se spostarlo nel file della prossima MINOR in caso di rilascio formale.
+- **Numerazione update:** l'`ALTER` di questa feature vive ora in `modules/mncs/update/1_0.sql`
+  (namespace custom, sequenza indipendente da upstream) — vedi la voce di convenzione in cima a
+  questo file. Non è più nel namespace `2_11_x` di upstream, quindi la nota AGENTS.md sui file
+  `PATCH` non si applica più.
