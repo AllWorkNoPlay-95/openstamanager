@@ -16,6 +16,47 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-09 — Registrazione incasso da Dettaglio fattura di vendita → Prima Nota
+
+**Obiettivo:** sul Dettaglio fattura di vendita (`id_module=14`) aggiungere un pulsante **"Registra
+incasso"** che apre un mini-form (metodo di pagamento + sede + importo) e scrive direttamente in
+**Prima Nota** (`co_movimenti`): Dare conto cliente / Avere conto contropartita, distribuendo
+l'importo sulle scadenze aperte (più vecchia prima) e aggiornando scadenzario e stato fattura.
+
+**Logica conto contropartita:** la coppia **(metodo di pagamento + sede) → conto** è risolta da una
+nuova tabella custom `mncs_incassi_conti`, gestibile da una UI in *Strumenti > Tabelle > Incassi
+conti*. La sede è precompilata da `co_documenti.id_sede_partenza` (a sua volta auto-derivata dal tipo
+documento via `co_tipi_documento.mncs_id_sede_partenza`); `id_sede = 0` ⇒ Sede legale. Se per la
+combinazione scelta **non** esiste un conto mappato, l'operazione viene **bloccata con errore**
+(nessuna scrittura). Riusa il motore di prima nota (`Mastrino::build` / `Movimento::build` /
+`Mastrino::aggiornaScadenzario`, `modules/primanota/src/`).
+
+**File toccati:**
+- `modules/mncs/update/1_2.sql` `[CUSTOM]` — nuovo. Crea `mncs_incassi_conti` (`id_pagamento`,
+  `id_sede`, `id_conto`, unique su `(id_pagamento,id_sede)`) e registra **additivamente** il modulo
+  gestionale *"Incassi conti"* sotto *Tabelle* (`zz_modules` + `zz_views`). Idempotente.
+- `modules/mncs_incassi_conti/{init,add,edit,actions}.php` `[CUSTOM]` — nuovo modulo (UI della mappa
+  metodo+sede→conto). CRUD raw `$dbo`. Nessun file core toccato.
+- `modules/mncs/incassi/form.php` `[CUSTOM]` — nuovo. Corpo del modale (mini-form) caricato via
+  `data-href`; POST esplicito a `registra.php`.
+- `modules/mncs/incassi/registra.php` `[CUSTOM]` — nuovo. Endpoint che valida, risolve il conto dalla
+  mappa (blocca se assente), distribuisce l'importo sulle scadenze aperte, crea i movimenti e
+  `redirect_url` al Dettaglio fattura.
+- `modules/fatture/custom/buttons.php` `[CUSTOM]` — **override del core** `modules/fatture/buttons.php`
+  (copia integrale + blocco `[MNCS]` in coda col pulsante "Registra incasso", visibile solo per
+  vendite fiscali con residuo > 0 in stato Emessa/Parzialmente pagato). Risoluzione via
+  `Structure::filepath()` (`src/Traits/PathTrait.php:40`): `custom/` vince sul core.
+
+**Caveat:**
+- `modules/fatture/custom/buttons.php` **maschera** il core → non riceve i bugfix upstream di
+  `modules/fatture/buttons.php`. A ogni merge upstream riallineare il corpo copiato mantenendo solo
+  il blocco `[MNCS]` in coda.
+- Lo schema (`1_2.sql`) va applicato tramite l'**updater OSM** (non eseguito manualmente sul DB). I
+  nuovi file PHP richiedono il **rebuild dell'immagine** (sono COPY-ati, non bind-mountati).
+- SHA commit: _(da assegnare al commit)_.
+
+---
+
 ## 2026-06-09 — Footer: branding "Fork MNCS per Kartiell Verona SRL"
 
 **Obiettivo:** nel footer dell'interfaccia, a destra resta la versione attuale ma la dicitura tra

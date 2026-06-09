@@ -37,6 +37,26 @@ alle regole del CLAUDE.md della cartella genitore (`../CLAUDE.md`).
 - Gli update custom girano **da zero su ogni installazione**: renderli **idempotenti**
   (`ADD/CHANGE/DROP COLUMN IF [NOT] EXISTS`, `REPLACE`, guardie). Non assumere uno stato pregresso.
 
+## Dove mettere il codice custom in `modules/`
+
+OSM scopre i **moduli registrati** (`zz_modules`) solo come cartelle **flat** `modules/<directory>`
+(`Module::$main_folder = 'modules'`; nessun modulo core usa directory annidate). Regole del fork:
+
+- **Nuovo modulo registrato** (ha una riga in `zz_modules`, es. una "Tabella" sotto *Strumenti*):
+  cartella **flat** `modules/mncs_<nome>/` con prefisso **`mncs_`**. Il prefisso evita la collisione
+  con un eventuale futuro modulo upstream omonimo (stessa logica del prefisso colonne). **Mai**
+  directory annidate (es. `modules/mncs/<nome>/`): non sono standard OSM e rompono URL/allegati/glob.
+  La registrazione (`INSERT INTO zz_modules` + `zz_views`) va nell'update SQL ed è **additiva**:
+  nessun file core toccato.
+- **Endpoint / script custom non-modulo** (file inclusi via URL o `include`, non registrati in
+  `zz_modules`): sotto il namespace fork **`modules/mncs/<area>/`** (es. `modules/mncs/incassi/`).
+- **Funzioni riutilizzabili** condivise tra più punti: in **`modules/mncs/shared/`**, per rispettare
+  DRY/KISS; includerle dove servono (`include_once`). Creare la cartella **solo quando serve**
+  davvero (KISS), non in anticipo.
+- **Update SQL**: in `modules/mncs/update/` (vedi sezione sopra).
+- **Override del core**: in `*/custom/` (vedi `Structure::filepath()`), da **minimizzare** perché
+  mascherano upstream.
+
 ## Custom Modifications Documentation (CUSTOM.md)
 
 - Ogni nostra personalizzazione al fork **DEVE** essere documentata in modo strutturato in
