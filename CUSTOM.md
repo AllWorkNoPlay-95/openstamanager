@@ -21,18 +21,19 @@ vanno ri-controllati a ogni allineamento).
 **Obiettivo:** rendere il flusso di incasso utilizzabile fin dalla bozza e snellire il dialog.
 
 **Decisioni:**
-- Il pulsante *"Registra incasso e Salva"* è ora visibile anche su fattura di vendita fiscale in
-  **Bozza** (oltre a Emessa / Parzialmente pagato), purché il netto a pagare sia > 0. Al click,
-  se la fattura è in bozza, `registra.php` la **emette** (genera scadenzario + prima nota) usando
-  il metodo di pagamento scelto e poi registra l'incasso, in un'unica azione. Niente più
-  salva→emetti→riapri.
+- Il pulsante *"Registra incasso e Salva"* è **sempre visibile fin dalla creazione** su fattura di
+  vendita fiscale in **Bozza** (oltre a Emessa / Parzialmente pagato), escluse le note di credito.
+  Non è più gated sul netto: su una bozza ancora vuota il pulsante c'è comunque e il dialog guida
+  ad aggiungere le righe. Al click, se la fattura è in bozza, `registra.php` la **emette** (genera
+  scadenzario + prima nota) usando il metodo di pagamento scelto e poi registra l'incasso, in
+  un'unica azione. Niente più salva→emetti→riapri.
 - Dialog incasso ridotto a **metodo di pagamento + importo**. La **Sede** non è più un campo
   (era ridondante): è presa dal corpo fattura (`id_sede_partenza`) e mostrata come label.
 
 **File toccati:**
-- `modules/fatture/custom/buttons.php` `[CUSTOM]` — visibilità pulsante estesa allo stato `Bozza`;
-  in bozza l'importo incassabile usa `$fattura->netto` (non lo scadenzario, ancora inesistente).
-  Rimosso `pull-right` (rompeva la toolbar): il pulsante si ordina via DOM (ultimo di `extra-buttons`).
+- `modules/fatture/custom/buttons.php` `[CUSTOM]` — pulsante sempre mostrato in `Bozza` (no gate
+  sul netto), escluse le note (`!$fattura->isNota()`); negli stati attivi resta gated sul residuo
+  aperto. Rimosso `pull-right` (rompeva la toolbar): ordinato via DOM (ultimo di `extra-buttons`).
 - `modules/mncs/incassi/registra.php` `[CUSTOM]` — emissione automatica della bozza prima
   dell'incasso (`Stato 'Emessa'` + `save()`), eseguita **dopo** la validazione dei conti per non
   emettere se l'incasso non può procedere; imposta `id_pagamento` della fattura col metodo scelto
@@ -40,10 +41,12 @@ vanno ri-controllati a ogni allineamento).
   fattura invece che dal POST. Messaggio "Fattura emessa." quando l'emissione avviene al volo.
 - `modules/mncs/incassi/form.php` `[CUSTOM]` — rimosso il select **Sede** (ora label sotto il
   cliente); header con **flexbox `space-between`** (residuo all'estrema destra); in bozza mostra il
-  **netto a pagare** e un avviso "la fattura verrà prima emessa e poi incassata".
+  **netto a pagare** e un avviso "la fattura verrà prima emessa e poi incassata". Se il netto è 0
+  (bozza vuota) il dialog mostra solo un avviso "aggiungi le righe" e nasconde input e submit.
 
 **Caveat:**
-- Su una bozza completamente vuota (netto 0) il pulsante resta nascosto: non c'è nulla da incassare.
+- Su una bozza vuota il pulsante c'è ma il dialog non permette di procedere finché non si aggiungono
+  righe con totale > 0 (riaprendo poi la finestra). Le righe vanno salvate prima di riaprire il dialog.
 - L'emissione al volo cambia il metodo di pagamento della fattura con quello scelto nel dialog
   (serve a generare lo scadenzario coerente).
 - `buttons.php` è un override CUSTOM del core: ricontrollare al merge upstream.
