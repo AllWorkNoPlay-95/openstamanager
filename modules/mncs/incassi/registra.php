@@ -83,6 +83,12 @@ if ($importo > $residuo + 0.001) {
     return;
 }
 
+// Abbuono automatico sotto soglia (impostazioni globali, Impostazioni > Fatturazione)
+$id_conto_abbuono = setting('Conto abbuono');
+$soglia_abbuono = round(floatval(str_replace(',', '.', (string) setting('Soglia abbuono'))), 2);
+$differenza = round($residuo - $importo, 2);
+$abbuona = $differenza > 0 && $differenza <= $soglia_abbuono && !empty($id_conto_abbuono);
+
 // Scadenze aperte, dalla più vecchia
 $scadenze = $dbo->fetchArray('SELECT `id`, (ABS(`da_pagare`) - ABS(`pagato`)) AS residuo FROM `co_scadenzario` WHERE `id_documento` = '.prepare($id_fattura).' AND ABS(`da_pagare`) > ABS(`pagato`) ORDER BY `scadenza` ASC, `id` ASC');
 
@@ -94,36 +100,67 @@ $descrizione = tr('Inc. fattura num. _NUM_ del _DATE_ (_NAME_)', [
     '_NAME_' => $fattura->anagrafica->ragione_sociale,
 ]);
 
-// Registrazione contabile (un unico mastrino per l'incasso)
+// Registrazione contabile (un unico mastrino per l'incasso).
+// Convenzione coerente con la Prima Nota manuale: Dare cassa/conto abbuono, Avere conto cliente.
 $mastrino = Mastrino::build($descrizione, date('Y-m-d'), false, true, $fattura->id_anagrafica);
 
 $rimanente = $importo;
+$abbuonato = 0;
 foreach ($scadenze as $scadenza_row) {
-    if ($rimanente <= 0.001) {
-        break;
-    }
-
-    $scadenza = Scadenza::find($scadenza_row['id']);
-    $quota = min($rimanente, round(floatval($scadenza_row['residuo']), 2));
-    if ($quota <= 0) {
+    $residuo_scad = round(floatval($scadenza_row['residuo']), 2);
+    if ($residuo_scad <= 0) {
         continue;
     }
 
-    // Dare sul conto cliente
-    $movimento_cliente = Movimento::build($mastrino, $id_conto_cliente, $fattura, $scadenza);
-    $movimento_cliente->totale = $quota;
-    $movimento_cliente->save();
+    $scadenza = Scadenza::find($scadenza_row['id']);
 
-    // Avere sul conto contropartita (cassa/banca)
-    $movimento_contropartita = Movimento::build($mastrino, $id_conto_contropartita, $fattura, $scadenza);
-    $movimento_contropartita->totale = -$quota;
-    $movimento_contropartita->save();
+    // Quota effettivamente incassata su questa scadenza
+    $quota = min(max($rimanente, 0), $residuo_scad);
+    if ($quota > 0) {
+        // Avere conto cliente
+        $movimento_cliente = Movimento::build($mastrino, $id_conto_cliente, $fattura, $scadenza);
+        $movimento_cliente->totale = -$quota;
+        $movimento_cliente->save();
 
-    $rimanente -= $quota;
+        // Dare conto contropartita (cassa/banca)
+        $movimento_cassa = Movimento::build($mastrino, $id_conto_contropartita, $fattura, $scadenza);
+        $movimento_cassa->totale = $quota;
+        $movimento_cassa->save();
+
+        $rimanente -= $quota;
+    }
+
+    // Abbuono del residuo non coperto su questa scadenza (la chiude)
+    if ($abbuona) {
+        $quota_abbuono = round($residuo_scad - $quota, 2);
+        if ($quota_abbuono > 0) {
+            // Avere conto cliente
+            $movimento_cliente_ab = Movimento::build($mastrino, $id_conto_cliente, $fattura, $scadenza);
+            $movimento_cliente_ab->totale = -$quota_abbuono;
+            $movimento_cliente_ab->save();
+
+            // Dare conto abbuono
+            $movimento_abbuono = Movimento::build($mastrino, $id_conto_abbuono, $fattura, $scadenza);
+            $movimento_abbuono->totale = $quota_abbuono;
+            $movimento_abbuono->save();
+
+            $abbuonato += $quota_abbuono;
+        }
+    }
 }
 
 // Aggiorna scadenzario e stato della fattura
 $mastrino->aggiornaScadenzario();
 
-flash()->info(tr('Incasso di _IMP_ registrato in prima nota.', ['_IMP_' => moneyFormat($importo - $rimanente)]));
+$messaggio = tr('Incasso di _IMP_ registrato in prima nota.', ['_IMP_' => moneyFormat($importo - $rimanente)]);
+if ($abbuonato > 0) {
+    $messaggio .= ' '.tr('Abbuonata una differenza di _AB_.', ['_AB_' => moneyFormat($abbuonato)]);
+}
+flash()->info($messaggio);
+
+// Avviso se la differenza era abbuonabile ma manca il conto configurato
+if ($differenza > 0 && $differenza <= $soglia_abbuono && empty($id_conto_abbuono)) {
+    flash()->warning(tr('Differenza di _D_ non abbuonata: configura il "Conto abbuono" in Impostazioni > Fatturazione.', ['_D_' => moneyFormat($differenza)]));
+}
+
 redirect_url($back);

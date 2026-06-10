@@ -162,8 +162,8 @@ if ($dir == 'entrata' && !empty($record['is_fiscale']) && in_array($record['stat
 
     if (floatval($mncs_residuo) > 0) {
         echo '
-<a class="btn btn-success" data-href="'.base_path_osm().'/modules/mncs/incassi/form.php?id_module='.$id_module.'&id_record='.$id_record.'" data-title="'.tr('Registra incasso').'">
-    <i class="fa fa-euro"></i> '.tr('Registra incasso').'
+<a class="btn btn-success pull-right" data-href="'.base_path_osm().'/modules/mncs/incassi/form.php?id_module='.$id_module.'&id_record='.$id_record.'" data-title="'.tr('Registra incasso').'">
+    <i class="fa fa-euro"></i> '.tr('Registra incasso e Salva').'
 </a>';
     }
 }
