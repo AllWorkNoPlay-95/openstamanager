@@ -16,6 +16,22 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-10 — Avviso "Incassi conti": dove configurare l'abbuono
+
+**Obiettivo:** rendere scopribile dalla UI dove vivono le impostazioni dell'abbuono automatico.
+Nella pagina del modulo *Strumenti > Tabelle > Incassi conti* viene mostrato un avviso che indica
+che `Conto abbuono` e `Soglia abbuono` si configurano in *Impostazioni > Fatturazione* (sono
+setting globali, non campi della mappa conti).
+
+**File toccati:**
+- `modules/mncs_incassi_conti/controller_before.php` `[CUSTOM]` — nuovo. Hook di modulo incluso da
+  `include/manager.php` prima del datatable: stampa un `alert alert-info` con il percorso delle
+  impostazioni. Nessun file core toccato.
+
+**SHA commit:** _(da assegnare al commit)_.
+
+---
+
 ## 2026-06-09 — Abbuono automatico in fase di incasso + fix segno Dare/Avere
 
 **Obiettivo:** in fase di incasso, se l'importo inserito è inferiore al residuo per una piccola
