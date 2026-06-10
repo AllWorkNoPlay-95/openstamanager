@@ -154,15 +154,20 @@ echo '
 </button>';
 
 // ============================================================================
-// [MNCS] Pulsante "Registra incasso": mini-form (metodo + sede + importo) che
-// scrive in Prima Nota da Dettaglio fattura di vendita. Vedi modules/mncs/incassi/.
+// [MNCS] Pulsante "Registra incasso": mini-form (metodo + importo) che scrive in
+// Prima Nota da Dettaglio fattura di vendita. Vedi modules/mncs/incassi/.
+// Ordinato via DOM (ultimo della extra-buttons), senza float: pull-right rompeva la toolbar.
 // ============================================================================
-if ($dir == 'entrata' && !empty($record['is_fiscale']) && in_array($record['stato'], ['Emessa', 'Parzialmente pagato'])) {
-    $mncs_residuo = $dbo->fetchOne('SELECT SUM(ABS(`da_pagare`) - ABS(`pagato`)) AS residuo FROM `co_scadenzario` WHERE `id_documento` = '.prepare($id_record))['residuo'];
+if ($dir == 'entrata' && !empty($record['is_fiscale']) && in_array($record['stato'], ['Bozza', 'Emessa', 'Parzialmente pagato'])) {
+    // In bozza non c'è ancora scadenzario: l'importo incassabile è il netto a pagare del documento
+    // (la fattura verrà emessa al volo da registra.php). Negli altri stati si usa il residuo aperto.
+    $mncs_residuo = $record['stato'] == 'Bozza'
+        ? $fattura->netto
+        : $dbo->fetchOne('SELECT SUM(ABS(`da_pagare`) - ABS(`pagato`)) AS residuo FROM `co_scadenzario` WHERE `id_documento` = '.prepare($id_record))['residuo'];
 
     if (floatval($mncs_residuo) > 0) {
         echo '
-<a class="btn btn-success pull-right" data-href="'.base_path_osm().'/modules/mncs/incassi/form.php?id_module='.$id_module.'&id_record='.$id_record.'" data-title="'.tr('Registra incasso').'">
+<a class="btn btn-success" data-href="'.base_path_osm().'/modules/mncs/incassi/form.php?id_module='.$id_module.'&id_record='.$id_record.'" data-title="'.tr('Registra incasso').'">
     <i class="fa fa-euro"></i> '.tr('Registra incasso e Salva').'
 </a>';
     }
