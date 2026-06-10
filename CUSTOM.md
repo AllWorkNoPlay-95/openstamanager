@@ -16,6 +16,46 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-09 — Abbuono automatico in fase di incasso + fix segno Dare/Avere
+
+**Obiettivo:** in fase di incasso, se l'importo inserito è inferiore al residuo per una piccola
+differenza (es. fattura 15,59 incassata 15,50), abbuonare automaticamente la differenza (0,09)
+chiudendo la scadenza e registrandola su un **conto abbuono** configurabile.
+
+**Decisioni:** conto abbuono **globale unico**; abbuono **automatico sotto soglia** (nessun checkbox).
+Due impostazioni globali in *Impostazioni > Fatturazione*: `Conto abbuono` e `Soglia abbuono` (default
+0,05 €). Se la differenza supera la soglia → incasso parziale (comportamento invariato); se il conto
+abbuono non è configurato → la differenza non viene abbuonata e compare un avviso.
+
+**Fix contestuale (segno Dare/Avere):** il `registra.php` ricalcava `Movimento::registraPagamentoAutomatico`,
+che per le vendite registra **Dare cliente / Avere cassa** — opposto alla Prima Nota manuale
+(`primanota/add.php`: **Dare cassa / Avere cliente**). Corretto allineandolo al metodo manuale. La
+chiusura scadenza non cambia (`aggiornaScadenzario` somma i movimenti con `totale>0`), ma il partitario
+ora è corretto. Contabilità abbuono: Avere cliente (residuo) · Dare cassa (incassato) · Dare conto
+abbuono (differenza).
+
+**File toccati:**
+- `modules/mncs/update/1_4.sql` `[CUSTOM]` — nuovo. Impostazioni globali `Conto abbuono` (select conto)
+  e `Soglia abbuono` (decimal) in `zz_settings` + titoli in `zz_settings_lang`. Idempotente.
+- `modules/mncs/incassi/registra.php` `[CUSTOM]` — fix segno (Avere cliente / Dare cassa) + logica
+  abbuono automatico sotto soglia (Dare `setting('Conto abbuono')`), con messaggi/avvisi.
+- `modules/mncs/incassi/form.php` `[CUSTOM]` — UI del modale rinnovata (header con residuo, layout 3
+  colonne) + **esito dinamico** in JS sull'importo: "Verrà fatto un abbuono di X" / "La fattura resterà
+  aperta" / "segnata come Pagata". Bottone "Registra incasso e Salva".
+- `modules/fatture/custom/buttons.php` `[CUSTOM]` — testo pulsante toolbar "Registra incasso e Salva" e
+  `pull-right` (estrema destra della toolbar).
+
+Nota: lo stato fattura (Pagato / Parzialmente pagato) è impostato da `Mastrino::aggiornaScadenzario()`
+in base a `pagato` vs `da_pagare` — nessuna logica di stato aggiunta lato nostro per evitare conflitti.
+
+**Caveat:**
+- Gli incassi registrati con il pulsante **prima** di questo fix hanno il **segno Dare/Avere invertito**
+  in prima nota (la scadenza risultava comunque chiusa). Eventuali registrazioni di test vanno
+  ri-registrate o corrette manualmente.
+- SHA commit: _(da assegnare al commit)_.
+
+---
+
 ## 2026-06-09 — Registrazione incasso da Dettaglio fattura di vendita → Prima Nota
 
 **Obiettivo:** sul Dettaglio fattura di vendita (`id_module=14`) aggiungere un pulsante **"Registra
