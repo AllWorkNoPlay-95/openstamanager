@@ -68,33 +68,40 @@ $action = base_path_osm().'/modules/mncs/incassi/registra.php?id_module='.$id_mo
 		</div>
 	</div>
 
-	<?php if ($is_bozza) { ?>
-	<div class="alert alert-warning" style="margin-bottom: 12px;">
-		<i class="fa fa-bolt"></i> <?php echo tr('La fattura è in bozza: verrà prima emessa e poi incassata.'); ?>
+	<?php if ($residuo <= 0) { ?>
+	<div class="alert alert-warning">
+		<i class="fa fa-info-circle"></i> <?php echo tr('La fattura non ha ancora importi da incassare: aggiungi le righe della fattura, poi riapri questa finestra per registrare l\'incasso.'); ?>
 	</div>
+	<?php } else { ?>
+		<?php if ($is_bozza) { ?>
+		<div class="alert alert-warning" style="margin-bottom: 12px;">
+			<i class="fa fa-bolt"></i> <?php echo tr('La fattura è in bozza: verrà prima emessa e poi incassata.'); ?>
+		</div>
+		<?php } ?>
+
+		<div class="row">
+			<div class="col-md-8">
+				{[ "type": "select", "label": "<?php echo tr('Metodo di pagamento'); ?>", "name": "id_pagamento", "required": 1, "ajax-source": "pagamenti", "value": "<?php echo $fattura->id_pagamento; ?>" ]}
+			</div>
+
+			<div class="col-md-4">
+				{[ "type": "number", "label": "<?php echo tr('Importo incassato'); ?>", "name": "importo", "required": 1, "decimals": 2, "value": "<?php echo numberFormat($residuo, 2); ?>" ]}
+			</div>
+		</div>
+
+		<div id="mncs-esito" class="alert alert-info" style="margin-top: 6px;"></div>
+
+		<div class="modal-footer">
+			<div class="col-md-12 text-right">
+				<button type="submit" class="btn btn-success btn-lg">
+					<i class="fa fa-check"></i> <?php echo tr('Registra incasso e Salva'); ?>
+				</button>
+			</div>
+		</div>
 	<?php } ?>
-
-	<div class="row">
-		<div class="col-md-8">
-			{[ "type": "select", "label": "<?php echo tr('Metodo di pagamento'); ?>", "name": "id_pagamento", "required": 1, "ajax-source": "pagamenti", "value": "<?php echo $fattura->id_pagamento; ?>" ]}
-		</div>
-
-		<div class="col-md-4">
-			{[ "type": "number", "label": "<?php echo tr('Importo incassato'); ?>", "name": "importo", "required": 1, "decimals": 2, "value": "<?php echo numberFormat($residuo, 2); ?>" ]}
-		</div>
-	</div>
-
-	<div id="mncs-esito" class="alert alert-info" style="margin-top: 6px;"></div>
-
-	<div class="modal-footer">
-		<div class="col-md-12 text-right">
-			<button type="submit" class="btn btn-success btn-lg">
-				<i class="fa fa-check"></i> <?php echo tr('Registra incasso e Salva'); ?>
-			</button>
-		</div>
-	</div>
 </form>
 
+<?php if ($residuo > 0) { ?>
 <script>
 (function () {
     var residuo = <?php echo json_encode($residuo); ?>;
@@ -141,3 +148,4 @@ $action = base_path_osm().'/modules/mncs/incassi/registra.php?id_module='.$id_mo
     setTimeout(window.mncsAggiornaEsito, 350);
 })();
 </script>
+<?php } ?>
