@@ -25,6 +25,7 @@
 include_once __DIR__.'/../../../core.php';
 
 use Modules\Fatture\Fattura;
+use Modules\Fatture\Stato;
 use Modules\PrimaNota\Mastrino;
 use Modules\PrimaNota\Movimento;
 use Modules\Scadenzario\Scadenza;
@@ -44,8 +45,12 @@ if (empty($fattura) || $fattura->direzione != 'entrata') {
 }
 
 $id_pagamento = post('id_pagamento');
-$id_sede = (int) post('id_sede');
 $importo = round(floatval(post('importo')), 2);
+
+// Sede presa dal corpo fattura (non più dal form): coerente con il documento.
+$id_sede = (int) $fattura->id_sede_partenza;
+
+$is_bozza = in_array($fattura->stato->getTranslation('title'), ['Bozza', 'Annullata', 'Non valida']);
 
 // Conto cliente (lato Dare)
 $id_conto_cliente = $fattura->anagrafica->id_conto_cliente;
@@ -66,7 +71,26 @@ if (empty($id_conto_contropartita)) {
     return;
 }
 
-// Residuo da incassare
+// Emissione automatica: se la fattura è ancora in bozza, viene prima emessa (genera
+// scadenzario + prima nota) e poi incassata, in un'unica azione dal Dettaglio fattura.
+// Eseguita solo dopo aver validato i conti, per non emettere se l'incasso non può procedere.
+$emessa_ora = false;
+if ($is_bozza) {
+    if (round(floatval($fattura->netto), 2) <= 0) {
+        flash()->error(tr('La fattura non ha importi da incassare: aggiungi le righe prima di registrare un incasso.'));
+        redirect_url($back);
+
+        return;
+    }
+
+    // Il metodo scelto guida la generazione dello scadenzario in fase di emissione.
+    $fattura->id_pagamento = $id_pagamento;
+    $fattura->stato()->associate(Stato::where('name', 'Emessa')->first());
+    $fattura->save();
+    $emessa_ora = true;
+}
+
+// Residuo da incassare (dopo l'eventuale emissione lo scadenzario è popolato)
 $residuo = round(floatval($dbo->fetchOne('SELECT SUM(ABS(`da_pagare`) - ABS(`pagato`)) AS residuo FROM `co_scadenzario` WHERE `id_documento` = '.prepare($id_fattura))['residuo']), 2);
 
 if ($importo <= 0) {
@@ -152,7 +176,8 @@ foreach ($scadenze as $scadenza_row) {
 // Aggiorna scadenzario e stato della fattura
 $mastrino->aggiornaScadenzario();
 
-$messaggio = tr('Incasso di _IMP_ registrato in prima nota.', ['_IMP_' => moneyFormat($importo - $rimanente)]);
+$messaggio = $emessa_ora ? tr('Fattura emessa.').' ' : '';
+$messaggio .= tr('Incasso di _IMP_ registrato in prima nota.', ['_IMP_' => moneyFormat($importo - $rimanente)]);
 if ($abbuonato > 0) {
     $messaggio .= ' '.tr('Abbuonata una differenza di _AB_.', ['_AB_' => moneyFormat($abbuonato)]);
 }
