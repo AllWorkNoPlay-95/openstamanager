@@ -16,31 +16,39 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
-## 2026-06-11 — Nasconde colonna "Costo unitario" nelle Fatture di vendita
+## 2026-06-11 — Righe fatture: override server-side di `row-list.php` (+ rimozione colonna "Costo unitario")
 
-**Obiettivo:** non mostrare la colonna *Costo unitario* nella griglia righe delle Fatture di
-vendita, senza toccare il core PHP né introdurre impostazioni/permessi.
+**Obiettivo:** intervenire **server-side** sulla griglia *Righe fatture* tramite un override in
+`modules/fatture/custom/`, abbandonando il precedente hack JS lato client (fragile: girava in `<head>`
+prima del DOM, gate sull'`<h1>`, nascondeva via CSS). Prima modifica concreta: nascondere la colonna
+*Costo unitario* nelle Fatture di vendita. Questo file sarà il punto delle prossime modifiche alla sezione.
 
-**Decisioni:**
-- Gestito **lato client** con uno script JS dedicato, additivo (nuovo file, nessun file core
-  modificato → nessun conflitto al merge upstream).
-- Lo script agisce **solo** sul modulo *Fatture di vendita* (gate sul testo dell'`<h1>` in
-  `.content-header`) e individua l'**indice della colonna a runtime** dal testo dell'header
-  (`Costo unitario`): resta corretto anche se upstream cambia l'ordine delle colonne.
-- Nasconde via CSS (`display:none`) l'header e le sole celle del `tbody#righe`; le righe dei
-  **totali** (con `colspan`, fuori da `tbody#righe`) non vengono toccate. La regola CSS sopravvive
-  ai re-render ajax delle righe; un `MutationObserver` copre il caricamento asincrono della tabella.
+**Come funziona l'override:** `edit.php` carica la griglia via AJAX con
+`$structure->fileurl('row-list.php')`; `fileurl()`→`filepath()`→`App::filepath()` risolve **prima**
+`modules/fatture/custom/row-list.php`, poi il core → il file custom maschera il core in modo trasparente,
+senza toccare alcun file core.
+
+**Decisioni / modifiche dentro l'override:**
+- **Fix include (obbligatorio):** `row-list.php` è l'entry point standalone della richiesta AJAX e fa
+  il bootstrap con `include_once __DIR__.'/init.php'`. In `custom/` `__DIR__` è `.../fatture/custom`,
+  quindi corretto in `include_once __DIR__.'/../init.php'` (→ `modules/fatture/init.php`). Senza → fatal.
+- **Colonna "Costo unitario" rimossa** (era gated da `$dir == 'entrata'`, unica differenza di colonna
+  vendita↔acquisto): rimossi `<th>` e `<td>` visibili; `$colspan` forzato a `'7'`.
+- **Valore preservato:** `actions.php` (`costo_unitario = post('costo') ?: 0`) e `aggiornaInline()`
+  azzererebbero `costo_unitario` ad ogni modifica inline se il campo sparisse. Emesso quindi un
+  `<input type="hidden" name="costo_<id>">` dentro la cella Q.tà, così il valore viene ripostato invariato.
 
 **File toccati:**
-- `assets/src/js/base/mncs-fatture-nascondi-costo.js` `[CUSTOM]` — nuovo file. Viene bundlato in
-  `assets/dist/js/custom.min.js` dal task gulp `srcJS` (glob `assets/src/js/base/*.js`), già
-  caricato globalmente su ogni pagina via `App::getAssets()['js']`.
+- `modules/fatture/custom/row-list.php` `[CUSTOM]` — **NUOVO**, copia integrale del core con i blocchi
+  marcati `[MNCS]` (fix include + rimozione colonna costo + hidden field).
+- `assets/src/js/base/mncs-fatture-nascondi-costo.js` `[CUSTOM]` — **ELIMINATO** (hack JS abbandonato).
+- `assets/dist/js/custom.min.js` — rigenerato (gulp `srcJS`); gitignored.
 
-**Build:** rigenerare il bundle con `yarn run build-OSM` (o `gulp`); `assets/dist/js/custom.min.js`
-è gitignored e ricostruito in fase di build/deploy.
+**Build:** rigenerare `assets/dist/js/custom.min.js` (gulp `srcJS` / rebuild immagine via watch).
 
-**Caveat:** nessun file core toccato. Se upstream rinominasse l'header "Costo unitario" o il titolo
-modulo "Fatture di vendita", aggiornare le due stringhe nello script.
+**Caveat:** `custom/row-list.php` è copia integrale → **non riceve i bugfix upstream** di
+`row-list.php`. Ad **ogni `git merge upstream`** riallineare il corpo copiato mantenendo solo i blocchi
+`[MNCS]`. `row-add.php`/`row-edit.php` non sono ancora overridati (si aggiungeranno con lo stesso pattern).
 
 ---
 
