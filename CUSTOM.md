@@ -16,6 +16,34 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-11 — Nasconde colonna "Costo unitario" nelle Fatture di vendita
+
+**Obiettivo:** non mostrare la colonna *Costo unitario* nella griglia righe delle Fatture di
+vendita, senza toccare il core PHP né introdurre impostazioni/permessi.
+
+**Decisioni:**
+- Gestito **lato client** con uno script JS dedicato, additivo (nuovo file, nessun file core
+  modificato → nessun conflitto al merge upstream).
+- Lo script agisce **solo** sul modulo *Fatture di vendita* (gate sul testo dell'`<h1>` in
+  `.content-header`) e individua l'**indice della colonna a runtime** dal testo dell'header
+  (`Costo unitario`): resta corretto anche se upstream cambia l'ordine delle colonne.
+- Nasconde via CSS (`display:none`) l'header e le sole celle del `tbody#righe`; le righe dei
+  **totali** (con `colspan`, fuori da `tbody#righe`) non vengono toccate. La regola CSS sopravvive
+  ai re-render ajax delle righe; un `MutationObserver` copre il caricamento asincrono della tabella.
+
+**File toccati:**
+- `assets/src/js/base/mncs-fatture-nascondi-costo.js` `[CUSTOM]` — nuovo file. Viene bundlato in
+  `assets/dist/js/custom.min.js` dal task gulp `srcJS` (glob `assets/src/js/base/*.js`), già
+  caricato globalmente su ogni pagina via `App::getAssets()['js']`.
+
+**Build:** rigenerare il bundle con `yarn run build-OSM` (o `gulp`); `assets/dist/js/custom.min.js`
+è gitignored e ricostruito in fase di build/deploy.
+
+**Caveat:** nessun file core toccato. Se upstream rinominasse l'header "Costo unitario" o il titolo
+modulo "Fatture di vendita", aggiornare le due stringhe nello script.
+
+---
+
 ## 2026-06-10 — Incasso da bozza (emette+incassa) + UI dialog incasso
 
 **Obiettivo:** rendere il flusso di incasso utilizzabile fin dalla bozza e snellire il dialog.
