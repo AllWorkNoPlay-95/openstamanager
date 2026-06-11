@@ -32,8 +32,13 @@ listini dedicati. Sostituisce l'import CSV manuale per il flusso event-driven; i
   riusando categoria/marca/modello/barcode/`setPrezzoVendita` IVA-aware.
 - Il `$record` **omette `qta`/`data_qta`** (niente movimenti di magazzino) e
   **`anagrafica_listino`/`prezzo_listino`** (niente prezzi per-anagrafica su `mg_prezzi_articoli`).
-- I 9 prezzi vanno in `mg_listini_articoli` via `Modules\ListiniCliente\Articolo::build(...,'entrata')`
+- I prezzi vanno in `mg_listini_articoli` via `Modules\ListiniCliente\Articolo::build(...,'entrata')`
   + `setPrezzoUnitario()` (calcola l'ivato), con delete+rebuild per (articolo, listino, dir).
+- **Scaglioni:** ogni listino porta i suoi scaglioni (price tier) come **una riga per scaglione** con
+  range `[minimo, massimo]` inclusivo. Il flattening è fatto lato k-odin (`fetch-osm-payload.ts`):
+  `minimo = scaglione_N`, `massimo = scaglione_{N+1}-1`, ultimo scaglione `massimo = 999999999`
+  (OSM non supporta massimo aperto con minimo valorizzato). Scaglioni con `scaglione_N = 0/NULL` sono
+  ignorati. Logica generica su N scaglioni (EV usa fino a 4, AUX oggi 1 ma pronto per di più).
 - **Auth:** shared secret nell'header `X-Osm-Sync-Secret`, confrontato (`hash_equals`) con la env
   `OSM_SYNC_SECRET` (passata al container in `docker-compose.yml`). 401 se assente/errato.
 
