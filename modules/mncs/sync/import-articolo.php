@@ -129,23 +129,31 @@ foreach ($prodotti as $p) {
         }
 
         // Listini EV1..EV5 + AUX1..AUX4 → mg_listini_articoli (dir 'entrata' = vendita).
+        // Ogni listino porta gli scaglioni già pronti come range [minimo, massimo]
+        // calcolati lato k-odin: una riga per scaglione.
         $listini = is_array($p['listini'] ?? null) ? $p['listini'] : [];
         foreach ($listino_ids as $key => $id_listino) {
-            $valore = $listini[$key] ?? null;
-            if ($valore === null || $valore === '') {
-                continue;
-            }
+            $tiers = is_array($listini[$key] ?? null) ? $listini[$key] : [];
 
-            // delete + rebuild: evita duplicati per (articolo, listino, direzione).
+            // delete + rebuild: rimuove righe stale e ricrea uno scaglione per riga.
             database()->delete('mg_listini_articoli', [
                 'id_articolo' => $articolo->id,
                 'id_listino' => $id_listino,
                 'dir' => 'entrata',
             ]);
 
-            $riga = \Modules\ListiniCliente\Articolo::build($articolo, $id_listino, 'entrata');
-            $riga->setPrezzoUnitario($valore);
-            $riga->save();
+            foreach ($tiers as $tier) {
+                if (!isset($tier['prezzo'], $tier['minimo'], $tier['massimo'])) {
+                    continue;
+                }
+
+                $riga = \Modules\ListiniCliente\Articolo::build($articolo, $id_listino, 'entrata');
+                $riga->minimo = $tier['minimo'];
+                $riga->massimo = $tier['massimo'];
+                $riga->sconto_percentuale = 0;
+                $riga->setPrezzoUnitario($tier['prezzo']);
+                $riga->save();
+            }
         }
 
         ++$results['imported'];
