@@ -16,6 +16,47 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-11 — Endpoint sync prodotti/listini da k-odin (no CSV)
+
+**Obiettivo:** ricevere da k-odin, ad ogni creazione/modifica di un prodotto o dei suoi listini,
+l'upsert dell'articolo in OSM con TUTTI i listini k-odin (Effettivi Vendita 1-5 + AUX 1-4) come 9
+listini dedicati. Sostituisce l'import CSV manuale per il flusso event-driven; il worker Node
+(`node-workers`, coda `osm-sync-products`) chiama l'endpoint via HTTP sulla rete Docker interna.
+
+**Come funziona:**
+- **9 listini dedicati** creati una volta in `mg_listini` (nomi `Effettivo Vendita 1..5 [EVn]`,
+  `Ausiliario 1..4 [AUXn]`).
+- L'endpoint **riusa la logica DB-side dell'importer ufficiale Articoli** senza CSV: `ArticoloSync`
+  estende `Modules\Articoli\Import\CSV` e bypassa il costruttore file-based (`Reader::createFromPath`),
+  impostando `primary_key = 'codice'`. Così `import($record, true, true)` gira sull'array associativo
+  riusando categoria/marca/modello/barcode/`setPrezzoVendita` IVA-aware.
+- Il `$record` **omette `qta`/`data_qta`** (niente movimenti di magazzino) e
+  **`anagrafica_listino`/`prezzo_listino`** (niente prezzi per-anagrafica su `mg_prezzi_articoli`).
+- I 9 prezzi vanno in `mg_listini_articoli` via `Modules\ListiniCliente\Articolo::build(...,'entrata')`
+  + `setPrezzoUnitario()` (calcola l'ivato), con delete+rebuild per (articolo, listino, dir).
+- **Auth:** shared secret nell'header `X-Osm-Sync-Secret`, confrontato (`hash_equals`) con la env
+  `OSM_SYNC_SECRET` (passata al container in `docker-compose.yml`). 401 se assente/errato.
+
+**File toccati (tutti CUSTOM, nessun file CORE):**
+- `modules/mncs/update/1_5.sql` `[CUSTOM]` — **NUOVO**, crea idempotente le 9 righe `mg_listini`.
+- `modules/mncs/sync/ArticoloSync.php` `[CUSTOM]` — **NUOVO**, sottoclasse dell'importer senza CSV.
+- `modules/mncs/sync/import-articolo.php` `[CUSTOM]` — **NUOVO**, endpoint HTTP (auth + upsert + 9 listini).
+
+**Lato k-odin (repo genitore, fuori da questa cartella):** hook `enqueueOsmSync` in
+`on-product-description-change.ts` e `on-price-change.ts`; code `osm-sync-products(-chunk)`;
+helper `shared/prodotti/osm/`; env `OSM_SYNC_SECRET`.
+
+**Caveat:**
+- `ArticoloSync` dipende dalla **firma di `import()`/`getAvailableFields()` di upstream**
+  (`modules/articoli/src/Import/CSV.php`): al `git merge upstream` verificare che `import($record,...)`
+  accetti ancora un array associativo e che `primary_key='codice'` resti valido.
+- Dipende anche dal modello `Modules\ListiniCliente\Articolo` (`mg_listini_articoli`, colonna
+  `data_scadenza` nullable da 2_4_53): ricontrollare se upstream cambia lo schema dei listini cliente.
+- Un prodotto che passa a `stato=5` in k-odin **non viene rimosso** da OSM (solo upsert per
+  `stato ∈ 0,1,4,10`), coerente con l'export CSV.
+
+---
+
 ## 2026-06-11 — Righe fatture: override server-side di `row-list.php` (+ rimozione colonna "Costo unitario")
 
 **Obiettivo:** intervenire **server-side** sulla griglia *Righe fatture* tramite un override in
