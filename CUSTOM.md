@@ -16,6 +16,68 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-12 — Export GECOM: fatture e note di credito in formato TRAF (TeamSystem)
+
+**Obiettivo:** esportare fatture di vendita e note di credito di un periodo come file **TRAF**
+(tracciato a larghezza fissa di TeamSystem GECOM Multi), scaricabile da una pagina dedicata
+con filtro periodo/stati, per l'import in contabilità dal commercialista. Sostituisce l'export
+equivalente del vecchio TeamSystem Enterprise.
+
+**Tracciato:** reverse-engineered da due file TRAF reali (995 documenti totali, periodo
+aprile-maggio 2026, forniti dall'utente) e validato con **roundtrip byte-per-byte su 1995
+record**: 993/995 documenti ricostruiti identici (le 2 differenze sono normalizzazioni ASCII
+volute del carattere `°` latin-1). Struttura per documento:
+
+- record **testata** (tipo `0`, 7000 char + CRLF): anagrafica cliente inline (pos. 13-228),
+  causale `001`/`002` (268-285), date ddmmyyyy (372-387), numero/sezionale/anno (388-416),
+  competenza mmYYYY (469), castelletto IVA a 8 slot da 31 char (475+, `[imponibile 12][codice
+  IVA 3][0000][imposta 12]`), totale (723), contropartite `[conto 7][importo 12]` (735+),
+  flag riferimento `S` (6995);
+- record **tipo `5`** opzionale (solo NC con `ref_documento`): numero+data fattura originaria
+  (6708-6723);
+- record **continuazione** (tipo `1`): numero "visivo" es. `123/FE` (5894) e data file YYMMDD
+  (5912).
+
+I byte non decodificati sono **congelati** nei template `record{0,1,5}.tpl` (7000 char, privi
+di dati cliente: solo costanti strutturali `S`/`U`/`N`/`SN`/`NNNNNNNN`). Sezionali osservati:
+`1` = FE (Feroleto), `0` = RE (Rende), `6` = NF, `5` = NR — corrispondono ai tipi documento
+OSM 43/42/45/44. Le NC hanno importi positivi: il segno contabile lo dà la causale `002`.
+
+**Impostazioni** (zz_settings, sezione "Export GECOM", modificabili da Impostazioni):
+`GECOM codice ditta` (6 cifre), `GECOM conto ricavo` (fallback 7 cifre), `GECOM mappa IVA`
+(JSON id `co_iva` → codice 3 cifre; aliquote non mappate **bloccano** l'export), `GECOM mappa
+conti` (JSON id `co_piano_dei_conti3` → conto GECOM), `GECOM mappa documenti` (JSON id
+`co_tipi_documento` → `{causale, descrizione, sezionale, nota_credito}`; **solo i tipi mappati
+vengono esportati**).
+
+**File toccati (tutti additivi, nessun file core):**
+- `modules/mncs_export_gecom/TrafBuilder.php` `[CUSTOM]` — builder dei record con mappa campi,
+  asserzione `strlen === 7000` per record, translitterazione ASCII.
+- `modules/mncs_export_gecom/templates/record{0,1,5}.tpl` `[CUSTOM]` — template a 7000 char
+  (estensione `.tpl` perché `*.txt` è in `.gitignore` upstream).
+- `modules/mncs_export_gecom/{init,edit,actions}.php` `[CUSTOM]` — pagina (filtro periodo +
+  stati, riepilogo configurazione con tipi mappati/esclusi) e download in-memory
+  (pattern export XML LIPE di `stampe_contabili`).
+- `modules/mncs/update/1_6.sql` `[CUSTOM]` — registrazione modulo sotto *Contabilità*
+  (`options='custom'`) + 5 impostazioni; idempotente.
+
+**Commit:** `eee1d4267` (TrafBuilder + template), `9ae74f244` (modulo + SQL).
+
+**Caveat:**
+- Il campo "codice cliente" GECOM (pos. 253-256) è la codifica interna del gestionale del
+  commercialista, non riproducibile da OSM: viene scritto `0000` e l'abbinamento è demandato
+  a P.IVA/CF presenti nel record. **Da verificare con il commercialista al primo import.**
+- Campi non decodificati con certezza, lasciati al valore del template: codice a 2 cifre
+  post flag persona fisica (pos. 135-136, presente in 15/949 record), telefono secondario
+  (6714-6733), sezione contropartite in DARE per imponibili negativi (887-1036, 2/949 record).
+  Gruppi IVA o contropartite **negativi bloccano l'export** con errore esplicito.
+- La mappa IVA va aggiornata quando si crea una nuova aliquota in OSM; la pagina segnala i
+  tipi documento non mappati.
+- Nome file di download: `TRAF` senza estensione (come gli originali); verificare se l'import
+  GECOM richiede il nome esatto.
+- UAT finale: import di un periodo già consegnato col vecchio sistema in GECOM Multi e
+  confronto delle registrazioni risultanti.
+
 ## 2026-06-12 — Righe fatture: rimozione descrizione "conto merci" dal `<small>` di riga
 
 **Obiettivo:** togliere la sola descrizione del conto merci (presa da `co_piano_dei_conti3` via
