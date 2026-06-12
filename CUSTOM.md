@@ -16,6 +16,27 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-12 — Righe fatture: rimozione descrizione "conto merci" dal `<small>` di riga
+
+**Obiettivo:** togliere la sola descrizione del conto merci (presa da `co_piano_dei_conti3` via
+`id_conto`, oppure il badge rosso "Conto mancante") dal `<small class="pull-right text-right
+text-muted">` mostrato in alto a destra di ogni riga nel corpo righe delle fatture. Restano
+invariate le altre informazioni del medesimo `<small>`: ritenute (acconto/previdenziale), cassa
+previdenziale, codici DOC/NRI/COM/CIG/CUP e i riferimenti "Origine".
+
+**Cosa è cambiato:**
+- Rimosso il placeholder `_DESCRIZIONE_CONTO_` dalla stringa template della `replace(...)` che
+  costruisce `$extra_riga` e la relativa entry dell'array di sostituzione.
+- Rimossa la fetch `SELECT descrizione FROM co_piano_dei_conti3 ...` ormai inutilizzata (elimina
+  anche una query DB per riga).
+
+**File toccati:**
+- `modules/fatture/custom/row-list.php` `[CUSTOM]` — modifica all'override esistente (vedi voce
+  2026-06-11 sotto).
+
+**Caveat:** essendo un override CUSTOM, **non riceve i bugfix upstream**; al `git merge upstream`
+riallineare mantenendo i blocchi `[MNCS]`.
+
 ## 2026-06-11 — Endpoint sync prodotti/listini da k-odin (no CSV)
 
 **Obiettivo:** ricevere da k-odin, ad ogni creazione/modifica di un prodotto o dei suoi listini,
