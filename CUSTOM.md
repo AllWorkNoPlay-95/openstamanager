@@ -37,6 +37,53 @@ previdenziale, codici DOC/NRI/COM/CIG/CUP e i riferimenti "Origine".
 **Caveat:** essendo un override CUSTOM, **non riceve i bugfix upstream**; al `git merge upstream`
 riallineare mantenendo i blocchi `[MNCS]`.
 
+---
+
+## 2026-06-12 — Righe fatture (vendita): colonna "Listini" + evidenziazione righe
+
+**Obiettivo:** nella griglia *Righe* delle Fatture di vendita (`$dir == 'entrata'`), nuova colonna
+"Listini" prima di "Prezzo unitario" che mostra, per le sole righe articolo: (a) gli **scaglioni** del listino
+assegnato al cliente (`an_anagrafiche.id_listino`; solo listino anagrafica, non sede), ognuno come
+bottone full-width (range a sinistra, prezzo a destra) che al click applica quel prezzo alla riga; (b) i prezzi dei
+**listini ausiliari AUX1-AUX4** su una sola riga (flex space-between) come **bottoni** che al click
+impostano il prezzo unitario della riga (`input().set()` + `aggiornaInline()`; disabilitati con
+`$block_edit`/righe speciali); gli AUX a prezzo 0 sono omessi e con più di 2 AUX presenti l'etichetta è
+abbreviata in "An"; a parità di AUX si usa lo scaglione che contiene la qta, altrimenti il primo. L'**ultimo prezzo pagato** dal cliente
+per quell'articolo (ultima riga di fattura di vendita, esclusa la fattura corrente; bozze incluse; numero
+fattura nel tooltip) è mostrato nella cella "Prezzo unitario", sotto l'input, come "Ult. DD/MM/YY — importo". **Evidenziazione riga server-side:** qta dentro uno
+scaglione e prezzo unitario corrente allineato al prezzo dello scaglione (tolleranza 0.005) →
+`class="success"`; prezzo diverso → `class="warning"`; qta fuori da ogni scaglione → nessuna classe.
+Lo scaglione corrispondente è marcato con badge success/warning nella cella.
+
+**Decisioni / dettagli:**
+- **Reattività senza JS nuovo:** la modifica inline della qta passa da `aggiornaInline()` → AJAX →
+  `caricaRighe()` che ricarica l'intero `row-list.php`, quindi classi e badge calcolati server-side
+  si aggiornano da soli.
+- **Filtri validità listino NULL-safe:** i filtri sono quelli di `getPrezzoConsigliato`
+  (`lib/common.php`) ma con date NULL trattate come "nessun vincolo" — i 9 listini k-odin
+  (`modules/mncs/update/1_5.sql`) e le righe del sync hanno `data_attivazione`/`data_scadenza_predefinita`/
+  `data_scadenza` NULL, e i filtri upstream li escluderebbero in silenzio.
+- **Query:** scaglioni in **una query batch** prima del loop (`IN` sugli id articolo); ultimo prezzo
+  con `ORDER BY ... LIMIT 1` **memoizzato per articolo** (niente groupwise-max/derived table
+  correlate, problematiche su MariaDB). Prezzi scelti ivato/non-ivato secondo il setting
+  "Utilizza prezzi di vendita comprensivi di IVA", coerente con `prezzo_unitario_corrente`.
+- **Precedenza classi:** le classi esistenti `danger` (qta=0) e `warning` (seriali mancanti) vincono
+  sulla nostra evidenziazione.
+- **Layout:** `$colspan` di nuovo condizionale (`'8'` vendita / `'7'` acquisto); +1 `<td>` vuoto
+  nelle righe descrizione in vendita; cella vuota per righe non-articolo (sconto, bollo, spese
+  incasso). Acquisti invariati.
+
+**File toccati:**
+- `modules/fatture/custom/row-list.php` `[CUSTOM]` — nuovi blocchi `[MNCS]`: prefetch scaglioni,
+  match scaglione + classe riga nel loop, `<th>`/`<td>` condizionali a `$dir`, colspan condizionale.
+
+**Commit:** (vedi git log)
+
+**Caveat:** vale il caveat della voce 2026-06-11 sottostante: il file è copia integrale del core →
+a ogni `git merge upstream` riallineare il corpo mantenendo i blocchi `[MNCS]` (ora anche questa colonna).
+
+---
+
 ## 2026-06-11 — Endpoint sync prodotti/listini da k-odin (no CSV)
 
 **Obiettivo:** ricevere da k-odin, ad ogni creazione/modifica di un prodotto o dei suoi listini,
