@@ -19,12 +19,16 @@
  */
 
 // [MNCS] Override CUSTOM di modules/fatture/row-list.php.
-// Copia integrale del core con due differenze marcate [MNCS]:
+// Copia integrale del core con tre differenze marcate [MNCS]:
 //   1) include riga sottostante: __DIR__.'/../init.php' (il file e' fetchato via
 //      AJAX come entry point standalone da custom/, quindi __DIR__ e' .../custom).
 //   2) colonna "Costo unitario" NON renderizzata nelle Fatture di vendita
 //      ($dir == 'entrata'): rimossi <th>/<td> visibili e colspan a '7'; il valore
 //      costo_unitario e' preservato via campo hidden (vedi blocchi [MNCS] sotto).
+//   3) colonna "Listino / Ultimo prezzo" (solo vendita, prima di "Prezzo unitario"):
+//      scaglioni del listino assegnato al cliente + ultimo prezzo pagato dal cliente
+//      per l'articolo; evidenziazione riga success/warning se la qta rientra in uno
+//      scaglione (prezzo applicato / non applicato).
 // CAVEAT MERGE UPSTREAM: questo file maschera il core e NON riceve i suoi bugfix.
 // Ad ogni merge riallineare il corpo copiato mantenendo solo i blocchi [MNCS].
 
@@ -37,7 +41,59 @@ use Models\Plugin;
 $block_edit = !empty($note_accredito) || in_array($record['stato'], ['Emessa', 'Pagato', 'Parzialmente pagato']) || !$abilita_genera;
 $order_row_desc = $_SESSION['module_'.$id_module]['order_row_desc'];
 $righe = $order_row_desc ? $fattura->getRighe()->sortByDesc('created_at') : $fattura->getRighe();
-$colspan = '7'; // [MNCS] era ($dir == 'entrata' ? '8' : '7'): la colonna costo non e' piu' visibile
+$colspan = ($dir == 'entrata' ? '8' : '7'); // [MNCS] in vendita: colonna costo rimossa, +1 per "Listino / Ultimo prezzo"
+
+// [MNCS] Colonna "Listino / Ultimo prezzo" (solo Fatture di vendita): prefetch batch
+// degli scaglioni del listino assegnato al cliente. Filtri di validita' come
+// getPrezzoConsigliato (lib/common.php), ma NULL-safe sulle date: i listini k-odin
+// (modules/mncs/update/1_5.sql) e le righe del sync hanno date NULL = nessun vincolo.
+$mncs_prezzi_ivati = setting('Utilizza prezzi di vendita comprensivi di IVA');
+$mncs_scaglioni = [];     // id_articolo => [['minimo','massimo','prezzo_unitario'], ...]
+$mncs_aux = [];           // id_articolo => [label AUXn => [tier, ...]]
+$mncs_ultimi_prezzi = []; // memo id_articolo => row|null (riempita lazy nel loop)
+if ($dir == 'entrata') {
+    $mncs_ids_articoli = [];
+    foreach ($righe as $mncs_r) {
+        if ($mncs_r->isArticolo() && !empty($mncs_r->id_articolo)) {
+            $mncs_ids_articoli[$mncs_r->id_articolo] = $mncs_r->id_articolo;
+        }
+    }
+    if (!empty($mncs_ids_articoli)) {
+        $mncs_rows = $dbo->fetchArray('SELECT `mg_listini_articoli`.`id_articolo`, `mg_listini_articoli`.`minimo`, `mg_listini_articoli`.`massimo`,
+                '.($mncs_prezzi_ivati ? '`mg_listini_articoli`.`prezzo_unitario_ivato`' : '`mg_listini_articoli`.`prezzo_unitario`').' AS `prezzo_unitario`
+            FROM `mg_listini`
+                INNER JOIN `mg_listini_articoli` ON `mg_listini`.`id` = `mg_listini_articoli`.`id_listino`
+                INNER JOIN `an_anagrafiche` ON `mg_listini`.`id` = `an_anagrafiche`.`id_listino`
+            WHERE `mg_listini`.`attivo` = 1
+                AND (`mg_listini`.`data_attivazione` IS NULL OR `mg_listini`.`data_attivazione` <= NOW())
+                AND (`mg_listini_articoli`.`data_scadenza` >= NOW() OR (`mg_listini_articoli`.`data_scadenza` IS NULL AND (`mg_listini`.`data_scadenza_predefinita` IS NULL OR `mg_listini`.`data_scadenza_predefinita` >= NOW())))
+                AND `mg_listini_articoli`.`dir` = \'entrata\'
+                AND `an_anagrafiche`.`id` = '.prepare($fattura->id_anagrafica).'
+                AND `mg_listini_articoli`.`id_articolo` IN ('.implode(',', array_map('prepare', $mncs_ids_articoli)).')
+            ORDER BY `mg_listini_articoli`.`minimo` ASC');
+        foreach ($mncs_rows as $mncs_r) {
+            $mncs_scaglioni[$mncs_r['id_articolo']][] = $mncs_r;
+        }
+
+        // Prezzi dei listini ausiliari AUX1-AUX4 (indipendenti dal listino del cliente).
+        $mncs_rows = $dbo->fetchArray('SELECT `mg_listini_articoli`.`id_articolo`, `mg_listini`.`nome`, `mg_listini_articoli`.`minimo`, `mg_listini_articoli`.`massimo`,
+                '.($mncs_prezzi_ivati ? '`mg_listini_articoli`.`prezzo_unitario_ivato`' : '`mg_listini_articoli`.`prezzo_unitario`').' AS `prezzo_unitario`
+            FROM `mg_listini`
+                INNER JOIN `mg_listini_articoli` ON `mg_listini`.`id` = `mg_listini_articoli`.`id_listino`
+            WHERE `mg_listini`.`attivo` = 1
+                AND `mg_listini`.`nome` LIKE \'%[AUX%]\'
+                AND (`mg_listini`.`data_attivazione` IS NULL OR `mg_listini`.`data_attivazione` <= NOW())
+                AND (`mg_listini_articoli`.`data_scadenza` >= NOW() OR (`mg_listini_articoli`.`data_scadenza` IS NULL AND (`mg_listini`.`data_scadenza_predefinita` IS NULL OR `mg_listini`.`data_scadenza_predefinita` >= NOW())))
+                AND `mg_listini_articoli`.`dir` = \'entrata\'
+                AND `mg_listini_articoli`.`id_articolo` IN ('.implode(',', array_map('prepare', $mncs_ids_articoli)).')
+            ORDER BY `mg_listini`.`nome` ASC, `mg_listini_articoli`.`minimo` ASC');
+        foreach ($mncs_rows as $mncs_r) {
+            if (preg_match('/\[(AUX\d+)\]/', $mncs_r['nome'], $mncs_m)) {
+                $mncs_aux[$mncs_r['id_articolo']][$mncs_m[1]][] = $mncs_r;
+            }
+        }
+    }
+}
 
 echo '
 <div class="table-responsive row-list">
@@ -55,6 +111,11 @@ echo '
                 <th class="text-left" style="width:30%;">'.tr('Descrizione').'</th>
                 <th class="text-center" width="120">'.tr('Q.tà').'</th>';
 // [MNCS] colonna "Costo unitario" nascosta nelle Fatture di vendita: <th> non emesso.
+// Al suo posto, solo in vendita, la colonna "Listino / Ultimo prezzo".
+if ($dir == 'entrata') {
+    echo '
+                <th class="text-center" width="170">'.tr('Listini').'</th>';
+}
 echo '
                 <th class="text-center" width="180">'.tr('Prezzo unitario').'</th>
                 <th class="text-center" width="140">'.tr('Sconto unitario').'</th>
@@ -91,6 +152,49 @@ foreach ($righe as $riga) {
     // Imposto sfondo rosso alle righe con quantità a 0
     if ($riga->qta == 0) {
         $extra = 'class="danger"';
+    }
+
+    // [MNCS] Match scaglione listino e ultimo prezzo pagato (solo vendita, solo articoli).
+    $mncs_scaglioni_riga = [];
+    $mncs_tier_match = null; // indice dello scaglione che contiene la qta
+    $mncs_tier_class = '';   // 'success' | 'warning' | ''
+    $mncs_ultimo = null;
+    if ($dir == 'entrata' && $riga->isArticolo() && !empty($riga->id_articolo)) {
+        $mncs_scaglioni_riga = $mncs_scaglioni[$riga->id_articolo] ?? [];
+        $mncs_qta = abs($riga->qta);
+        foreach ($mncs_scaglioni_riga as $mncs_i => $mncs_tier) {
+            $mncs_massimo = $mncs_tier['massimo'] === null ? INF : floatval($mncs_tier['massimo']);
+            if ($mncs_qta >= floatval($mncs_tier['minimo']) && $mncs_qta <= $mncs_massimo) {
+                $mncs_tier_match = $mncs_i;
+                $mncs_tier_class = abs(floatval($mncs_tier['prezzo_unitario']) - floatval($riga->prezzo_unitario_corrente)) < 0.005 ? 'success' : 'warning';
+                break;
+            }
+        }
+
+        // Ultimo prezzo pagato dal cliente per l'articolo: ultima riga di fattura di
+        // vendita esclusa la corrente. Memoizzato per articolo; LIMIT 1 per evitare
+        // groupwise-max/derived table correlate (problematiche su MariaDB).
+        if (!array_key_exists($riga->id_articolo, $mncs_ultimi_prezzi)) {
+            $mncs_ultimi_prezzi[$riga->id_articolo] = $dbo->fetchOne('SELECT
+                    '.($mncs_prezzi_ivati ? '`co_righe_documenti`.`prezzo_unitario_ivato`' : '`co_righe_documenti`.`prezzo_unitario`').' AS `prezzo_unitario`,
+                    `co_documenti`.`data`,
+                    IFNULL(NULLIF(`co_documenti`.`numero_esterno`, \'\'), NULLIF(`co_documenti`.`numero`, \'\')) AS `numero`
+                FROM `co_righe_documenti`
+                    INNER JOIN `co_documenti` ON `co_documenti`.`id` = `co_righe_documenti`.`id_documento`
+                    INNER JOIN `co_tipi_documento` ON `co_tipi_documento`.`id` = `co_documenti`.`id_tipo_documento`
+                WHERE `co_tipi_documento`.`dir` = \'entrata\'
+                    AND `co_documenti`.`id_anagrafica` = '.prepare($fattura->id_anagrafica).'
+                    AND `co_righe_documenti`.`id_articolo` = '.prepare($riga->id_articolo).'
+                    AND `co_documenti`.`id` != '.prepare($fattura->id).'
+                ORDER BY `co_documenti`.`data` DESC, `co_documenti`.`id` DESC, `co_righe_documenti`.`id` DESC
+                LIMIT 1') ?: null;
+        }
+        $mncs_ultimo = $mncs_ultimi_prezzi[$riga->id_articolo];
+
+        // Precedenza classi: danger (qta=0) e warning (seriali mancanti) esistenti vincono.
+        if ($extra === '' && $mncs_tier_class !== '') {
+            $extra = 'class="'.$mncs_tier_class.'"';
+        }
     }
 
     $extra_riga = '';
@@ -220,10 +324,11 @@ foreach ($righe as $riga) {
             </td>';
 
     if ($riga->isDescrizione()) {
-        // [MNCS] Rimossa la cella vuota della colonna "Costo unitario" (era gated da
-        // $dir == 'entrata'): la colonna non esiste più, quindi le righe descrizione
-        // devono avere lo stesso numero di celle dell'header.
-        echo '
+        // [MNCS] Rimossa la cella vuota della colonna "Costo unitario"; in vendita
+        // serve invece la cella vuota extra per "Listino / Ultimo prezzo", per
+        // mantenere lo stesso numero di celle dell'header.
+        echo ($dir == 'entrata' ? '
+            <td></td>' : '').'
             <td></td>
             <td></td>
             <td></td>
@@ -244,6 +349,71 @@ foreach ($righe as $riga) {
                 {[ "type": "number", "name": "qta_'.$riga->id.'", "value": "'.$riga->qta.'", "min-value": "0", "onchange": "aggiornaInline($(this).closest(\'tr\').data(\'id\'))", "disabled": "'.($riga->isSconto() ? 1 : 0).'", "disabled": "'.($block_edit || $riga->isSconto() || $row_disable).'", "decimals": "qta" ]}
             </td>';
 
+        // [MNCS] Cella "Listino / Ultimo prezzo" (solo vendita): scaglioni del listino
+        // cliente (badge sullo scaglione corrispondente alla qta) + ultimo prezzo pagato.
+        // Cella vuota per righe non-articolo (sconto, bollo, spese incasso).
+        if ($dir == 'entrata') {
+            echo '
+            <td class="text-right">';
+            if ($riga->isArticolo()) {
+                if (!empty($mncs_scaglioni_riga)) {
+                    // Uno scaglione per riga, cliccabile: al click applica quel prezzo alla riga.
+                    // Range a sinistra, prezzo in grassetto a destra. Tutti gli scaglioni sono badge
+                    // "fissi" (stessa forma): quello che contiene la qta ha il colore success/warning
+                    // (hover nativo a.badge-*:hover), gli altri sono trasparenti e l'hover
+                    // sovrascrive solo lo sfondo (grigio chiaro) via JS.
+                    $mncs_disabilitato = $block_edit || $row_disable;
+                    foreach ($mncs_scaglioni_riga as $mncs_i => $mncs_tier) {
+                        $mncs_infinito = $mncs_tier['massimo'] === null || floatval($mncs_tier['massimo']) >= 999999999;
+                        $mncs_range = numberFormat($mncs_tier['minimo'], 0).' - '.($mncs_infinito ? '&infin;' : numberFormat($mncs_tier['massimo'], 0));
+                        $mncs_match = $mncs_i === $mncs_tier_match;
+                        $mncs_classe_riga = $mncs_match
+                            ? 'badge badge-'.($mncs_tier_class == 'success' ? 'success' : 'warning')
+                            : 'badge text-muted';
+                        $mncs_hover = (!$mncs_match && !$mncs_disabilitato)
+                            ? ' onmouseenter="$(this).css(\'background-color\', \'#e9ecef\')" onmouseleave="$(this).css(\'background-color\', \'\')"'
+                            : '';
+                        echo '
+                <a role="button" class="text-nowrap '.$mncs_classe_riga.'" style="display: flex; justify-content: space-between; align-items: baseline; font-size: 100%; width: 100%; padding: 0 2px;'.($mncs_disabilitato ? ' pointer-events: none;' : '').'" title="'.tr('Applica questo prezzo').'"'.$mncs_hover.($mncs_disabilitato ? '' : ' onclick="input(\'prezzo_'.$riga->id.'\').set('.floatval($mncs_tier['prezzo_unitario']).'); aggiornaInline('.$riga->id.');"').'><span>'.$mncs_range.'</span><b>'.moneyFormat($mncs_tier['prezzo_unitario'], 2).'</b></a>';
+                    }
+                } else {
+                    echo '
+                <div class="text-muted">-</div>';
+                }
+                // Prezzi listini ausiliari AUX1-AUX4 su una sola riga, con etichetta; gli AUX
+                // a prezzo 0 sono omessi; con piu' di 2 AUX presenti l'etichetta diventa "An".
+                // A parita' di AUX si usa lo scaglione che contiene la qta, altrimenti il primo.
+                if (!empty($mncs_aux[$riga->id_articolo])) {
+                    $mncs_aux_presenti = [];
+                    foreach ($mncs_aux[$riga->id_articolo] as $mncs_label => $mncs_tiers) {
+                        $mncs_prezzo_aux = $mncs_tiers[0]['prezzo_unitario'];
+                        foreach ($mncs_tiers as $mncs_tier) {
+                            $mncs_massimo = $mncs_tier['massimo'] === null ? INF : floatval($mncs_tier['massimo']);
+                            if (abs($riga->qta) >= floatval($mncs_tier['minimo']) && abs($riga->qta) <= $mncs_massimo) {
+                                $mncs_prezzo_aux = $mncs_tier['prezzo_unitario'];
+                                break;
+                            }
+                        }
+                        if (floatval($mncs_prezzo_aux) != 0) {
+                            $mncs_aux_presenti[$mncs_label] = $mncs_prezzo_aux;
+                        }
+                    }
+                    if (!empty($mncs_aux_presenti)) {
+                        // Ogni AUX e' un bottone: al click imposta il prezzo unitario della riga.
+                        $mncs_aux_parts = [];
+                        foreach ($mncs_aux_presenti as $mncs_label => $mncs_prezzo_aux) {
+                            $mncs_label_breve = count($mncs_aux_presenti) > 2 ? str_replace('AUX', 'A', $mncs_label) : $mncs_label;
+                            $mncs_aux_parts[] = '<button type="button" class="btn btn-outline-secondary btn-xs" title="'.$mncs_label.': '.moneyFormat($mncs_prezzo_aux, 2).'"'.($block_edit || $row_disable ? ' disabled' : '').' onclick="input(\'prezzo_'.$riga->id.'\').set('.floatval($mncs_prezzo_aux).'); aggiornaInline('.$riga->id.');">'.$mncs_label_breve.' <b>'.moneyFormat($mncs_prezzo_aux, 2).'</b></button>';
+                        }
+                        echo '
+                <div class="text-nowrap" style="display: flex; justify-content: space-between; margin-top: 3px;">'.implode('', $mncs_aux_parts).'</div>';
+                    }
+                }
+            }
+            echo '
+            </td>';
+        }
+
         if ($riga->isArticolo()) {
             $id_anagrafica = $fattura->id_anagrafica;
             $show_notifica = getPrezzoConsigliato($id_anagrafica, $dir, $riga->id_articolo, $riga, $fattura->id_sede_destinazione);
@@ -261,6 +431,12 @@ foreach ($righe as $riga) {
             <td class="text-center">
                 '.($show_notifica['show_notifica_prezzo'] ? '<i class="fa fa-info-circle notifica-prezzi"></i>' : '').'
                 {[ "type": "number", "name": "prezzo_'.$riga->id.'", "value": "'.$riga->prezzo_unitario_corrente.'", "onchange": "aggiornaInline($(this).closest(\'tr\').data(\'id\'))", "icon-before": "'.(abs($riga->provvigione_unitaria) > 0 ? '<span class=\'tip text-info\' title=\''.provvigioneInfo($riga).'\'><small><i class=\'fa fa-handshake-o\'></i></small></span>' : '').'", "icon-after": "'.currency().'", "disabled": "'.($block_edit || $row_disable).'" ]}';
+
+            // [MNCS] Ultimo prezzo pagato dal cliente per l'articolo, sotto l'input del prezzo.
+            if ($dir == 'entrata' && !empty($mncs_ultimo)) {
+                echo '
+                <div class="text-muted text-nowrap" style="display: flex; justify-content: space-between;"'.($mncs_ultimo['numero'] !== null ? ' title="'.tr('Fattura n. _NUM_', ['_NUM_' => $mncs_ultimo['numero']]).'"' : '').'><span>'.tr('Ult.').' '.date('d/m/y', strtotime($mncs_ultimo['data'])).'</span><b>'.moneyFormat($mncs_ultimo['prezzo_unitario'], 2).'</b></div>';
+            }
 
             // Prezzo inferiore al minimo consigliato
             if ($riga->isArticolo()) {
