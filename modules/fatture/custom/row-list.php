@@ -106,14 +106,11 @@ foreach ($righe as $riga) {
             $id_documento_fe = $documento_originale['id_documento_fe'];
         }
 
-        $descrizione_conto = $dbo->fetchOne('SELECT descrizione FROM co_piano_dei_conti3 WHERE id = '.prepare($riga->id_conto))['descrizione'];
-
-        $extra_riga = replace('_DESCRIZIONE_CONTO__ID_DOCUMENTO__NUMERO_RIGA__CODICE_COMMESSA__CODICE_CIG__CODICE_CUP__RITENUTA_ACCONTO__RITENUTA_CONTRIBUTI__RIVALSA_', [
+        // [MNCS] Rimossa la descrizione del conto merci dal <small> di riga (era _DESCRIZIONE_CONTO_).
+        $extra_riga = replace('_ID_DOCUMENTO__NUMERO_RIGA__CODICE_COMMESSA__CODICE_CIG__CODICE_CUP__RITENUTA_ACCONTO__RITENUTA_CONTRIBUTI__RIVALSA_', [
             '_RIVALSA_' => $riga->rivalsa_inps ? '<br>'.tr('Cassa previdenziale').': '.moneyFormat(abs($riga->rivalsa_inps)) : null,
             '_RITENUTA_ACCONTO_' => $riga->ritenuta_acconto ? '<br>Ritenuta acconto: '.moneyFormat(abs($riga->ritenuta_acconto)) : null,
             '_RITENUTA_CONTRIBUTI_' => $riga->ritenuta_contributi ? '<br>Ritenuta previdenziale: '.moneyFormat(abs($riga->ritenuta_contributi)) : null,
-            '_DESCRIZIONE_CONTO_' => $descrizione_conto ?: '<span class="badge badge-danger" ><i class="fa fa-exclamation-triangle"></i>
-            '.tr('Conto mancante').'</span>',
             '_ID_DOCUMENTO_' => $id_documento_fe ? ' - DOC: '.$id_documento_fe : null,
             '_NUMERO_RIGA_' => $num_item ? ', NRI: '.$num_item : null,
             '_CODICE_COMMESSA_' => $codice_commessa ? ', COM: '.$codice_commessa : null,
