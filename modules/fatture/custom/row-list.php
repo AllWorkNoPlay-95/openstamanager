@@ -29,6 +29,9 @@
 //      scaglioni del listino assegnato al cliente + ultimo prezzo pagato dal cliente
 //      per l'articolo; evidenziazione riga success/warning se la qta rientra in uno
 //      scaglione (prezzo applicato / non applicato).
+//   4) cella Descrizione: codice articolo non piu' come prefisso del link ("codice -
+//      descrizione" nel core) ma in fondo alla cella come "SKU: codice", affiancato
+//      da "EAN: barcode"; rimosso il blocco barcode separato del core (fa-barcode).
 // CAVEAT MERGE UPSTREAM: questo file maschera il core e NON riceve i suoi bugfix.
 // Ad ogni merge riallineare il corpo copiato mantenendo solo i blocchi [MNCS].
 
@@ -254,8 +257,9 @@ foreach ($righe as $riga) {
     echo '
                 </small>';
 
+    // [MNCS] Link con la sola descrizione: il codice (SKU) e' mostrato in fondo alla cella.
     if ($riga->isArticolo()) {
-        echo Modules::link('Articoli', $riga->id_articolo, $riga->codice.' - '.$riga->descrizione);
+        echo Modules::link('Articoli', $riga->id_articolo, $riga->descrizione);
     } else {
         echo nl2br((string) $riga->descrizione);
     }
@@ -285,10 +289,8 @@ foreach ($righe as $riga) {
         }
     }
 
-    if ($riga->isArticolo() && !empty($riga->barcode)) {
-        echo '
-                <br><small><i class="fa fa-barcode"></i> '.$riga->barcode.'</small>';
-    }
+    // [MNCS] Blocco barcode del core (fa-barcode) rimosso: l'EAN e' mostrato in fondo
+    // alla cella accanto allo SKU (vedi blocco prima della chiusura del <td>).
 
     if (!empty($riga->note)) {
         if (strlen((string) $riga->note) > 50) {
@@ -319,6 +321,17 @@ foreach ($righe as $riga) {
         ]).'
                     '.($has_alert ? '<i class="fa fa-warning text-danger"></i>' : '').'
                 </span>';
+    }
+
+    // [MNCS] SKU (codice articolo) ed EAN in fondo alla cella Descrizione. L'EAN viene
+    // da co_righe_documenti.barcode se valorizzato, altrimenti dai barcode dell'articolo
+    // (accessor barcodes -> mg_articoli_barcode, anche multipli).
+    if ($riga->isArticolo()) {
+        $mncs_ean = !empty($riga->barcode) ? $riga->barcode : $riga->articolo->barcodes->implode(', ');
+        if (!empty($riga->codice) || !empty($mncs_ean)) {
+            echo '
+                <br><small class="text-muted">'.(!empty($riga->codice) ? tr('SKU').': '.$riga->codice : '').(!empty($riga->codice) && !empty($mncs_ean) ? ' &nbsp; ' : '').(!empty($mncs_ean) ? tr('EAN').': '.$mncs_ean : '').'</small>';
+        }
     }
     echo '
             </td>';
