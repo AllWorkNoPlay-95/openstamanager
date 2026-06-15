@@ -16,6 +16,71 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-12 — Articoli: campo personalizzato "Alias" (controparte di uf_code k-odin)
+
+**Obiettivo:** dare agli articoli OSM un campo testo "Alias", controparte di `prodotti.uf_cod`
+(`uf_code`) di k-odin, valorizzato automaticamente dal sync server-to-server k-odin → OSM e
+modificabile a mano dai form articolo.
+
+**Approccio:** campo personalizzato nativo OSM (`zz_fields` + `zz_field_record`), **non** una
+colonna su `mg_articoli` → zero file core toccati: il core renderizza i campi personalizzati nei
+form add/edit (`FieldManager`, `add.php`, `editor.php`) e li salva genericamente (`actions.php`
+radice, POST name = `html_name`). `html_name` stabile: `mncs_alias`. `id_plugin = NULL`
+esplicito (campo a livello modulo, non plugin).
+
+**Cosa è cambiato:**
+- Registrazione campo: INSERT idempotente in `zz_fields` (modulo Articoli, `name='Alias'`,
+  `html_name='mncs_alias'`, `on_add=1` → presente anche nel form di creazione).
+- Colonna "Alias" ricercabile nell'elenco articoli: INSERT idempotente in `zz_views` +
+  `zz_views_lang` con subquery EAV su `zz_field_record` risolta per `html_name`. Niente
+  `zz_group_view`: la popola il post-update (`src/Update.php`) per le viste orfane.
+- Sync: l'endpoint k-odin accetta il campo `alias` nel payload prodotti e fa upsert su
+  `zz_field_record` (alias assente/vuoto → valore esistente non toccato, come i campi opzionali).
+- Lato k-odin (repo genitore): `node/src/shared/prodotti/osm/fetch-osm-payload.ts` invia
+  `alias` = `prodotti.uf_cod`; l'export CSV per OSM
+  (`node/src/api/routes/prodotti/utils/openstamanager/generate-import-file.ts`) ha una colonna
+  "Alias" **solo informativa** in coda.
+
+**File toccati:**
+- `modules/mncs/update/1_6.sql` `[CUSTOM]` — nuovo: registrazione campo + vista elenco.
+- `modules/mncs/sync/import-articolo.php` `[CUSTOM]` — risoluzione `id_field` di `mncs_alias`
+  e upsert su `zz_field_record` per ogni prodotto con `alias` valorizzato.
+
+**Commit:** (vedi git log)
+
+**Caveat:**
+- L'importer CSV core (`modules/articoli/src/Import/CSV.php`) **non** importa la colonna
+  "Alias" del CSV (scelta deliberata: l'alias viaggia solo via sync API; la colonna CSV è
+  informativa e viene ignorata all'import senza errori).
+- Il valore vive in EAV (`zz_field_record`), non in `mg_articoli`: query dirette sugli alias
+  devono passare dal join `zz_fields`/`zz_field_record`.
+
+---
+
+## 2026-06-12 — Righe fatture: SKU ed EAN in fondo alla cella Descrizione
+
+**Obiettivo:** nella colonna *Descrizione* del corpo righe delle fatture, non mostrare più il codice
+articolo come prefisso del link ("codice - descrizione" nel core) ma in fondo alla cella come
+"SKU: codice", affiancato da "EAN: barcode".
+
+**Cosa è cambiato:**
+- Il link `Modules::link('Articoli', ...)` usa la sola `descrizione` (senza `codice.' - '`).
+- Nuova riga in fondo alla cella (dopo note e competenza): `<small class="text-muted">` con
+  `SKU: <codice>` e, se presente, `EAN: <barcode>` affiancato; emessa solo se almeno uno dei due
+  valori è presente. L'EAN viene da `co_righe_documenti.barcode` se valorizzato, altrimenti dai
+  barcode dell'articolo (accessor `barcodes` → `mg_articoli_barcode`, anche multipli separati da
+  virgola).
+- Rimosso il blocco barcode separato del core (`<i class="fa fa-barcode">` + barcode), ora ridondante.
+
+**File toccati:**
+- `modules/fatture/custom/row-list.php` `[CUSTOM]` — modifica all'override esistente (vedi voce
+  2026-06-11 sotto).
+
+**Caveat:** essendo un override CUSTOM, **non riceve i bugfix upstream**; al `git merge upstream`
+riallineare mantenendo i blocchi `[MNCS]`.
+
+---
+
 ## 2026-06-12 — Righe fatture: rimozione descrizione "conto merci" dal `<small>` di riga
 
 **Obiettivo:** togliere la sola descrizione del conto merci (presa da `co_piano_dei_conti3` via

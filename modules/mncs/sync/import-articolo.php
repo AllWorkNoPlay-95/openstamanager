@@ -91,6 +91,12 @@ foreach ($listino_nomi as $key => $nome) {
 // Campi opzionali passati direttamente all'importer (solo se valorizzati).
 $campi_opzionali = ['prezzo_acquisto', 'prezzo_vendita', 'categoria', 'marca', 'modello', 'barcode', 'um', 'codice_iva_vendita', 'note', 'peso_lordo'];
 
+// Campo personalizzato "Alias" (controparte di uf_code k-odin): vive in zz_field_record,
+// non in mg_articoli, quindi non passa dall'importer. Registrato da modules/mncs/update/1_6.sql;
+// se assente (update non ancora eseguito) l'alias viene semplicemente ignorato.
+$alias_field = database()->fetchOne('SELECT `id` FROM `zz_fields` WHERE `html_name` = '.prepare('mncs_alias'));
+$id_field_alias = !empty($alias_field) ? (int) $alias_field['id'] : null;
+
 $importer = new \Modules\Mncs\Sync\ArticoloSync();
 $results = ['imported' => 0, 'failed' => 0, 'errors' => []];
 
@@ -126,6 +132,22 @@ foreach ($prodotti as $p) {
         $articolo = \Modules\Articoli\Articolo::where('codice', $codice)->first();
         if (empty($articolo)) {
             throw new \Exception('articolo non trovato dopo import');
+        }
+
+        // Alias (campo personalizzato): upsert su zz_field_record. Come per i campi
+        // opzionali, un alias assente/vuoto non tocca il valore esistente.
+        $alias = trim((string) ($p['alias'] ?? ''));
+        if ($id_field_alias !== null && $alias !== '') {
+            $esistente = database()->fetchOne('SELECT `id` FROM `zz_field_record` WHERE `id_field` = '.prepare($id_field_alias).' AND `id_record` = '.prepare($articolo->id));
+            if (empty($esistente)) {
+                database()->insert('zz_field_record', [
+                    'id_field' => $id_field_alias,
+                    'id_record' => $articolo->id,
+                    'value' => $alias,
+                ]);
+            } else {
+                database()->update('zz_field_record', ['value' => $alias], ['id' => $esistente['id']]);
+            }
         }
 
         // Listini EV1..EV5 + AUX1..AUX4 → mg_listini_articoli (dir 'entrata' = vendita).
