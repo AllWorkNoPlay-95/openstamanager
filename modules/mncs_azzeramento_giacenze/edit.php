@@ -22,9 +22,6 @@ include_once __DIR__.'/../../core.php';
 
 echo '
 <div class="box box-warning">
-    <div class="box-header with-border">
-        <h3 class="box-title"><i class="fa fa-eraser"></i> '.tr('Azzeramento giacenze').'</h3>
-    </div>
     <div class="box-body">
         <div class="alert alert-warning">
             <p>'.tr('Scarica un CSV che porta a <b>0</b> le giacenze di tutti gli articoli che hanno stock in OpenSTAManager (sedi Feroleto e Rende). Caricalo poi in <b>Strumenti &rarr; Importa &rarr; "Giacenze magazzino"</b> per fare piazza pulita prima di un nuovo inventario.').'</p>
