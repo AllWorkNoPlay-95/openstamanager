@@ -16,6 +16,51 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-15 — Articoli: importer CSV "Giacenze magazzino" per sede
+
+**Obiettivo:** importare da CSV le giacenze di magazzino degli articoli su due sedi. Il file
+contiene per ogni articolo lo SKU (`codice`) e le quantità per la sede Feroleto e la sede Rende.
+Solo CSV.
+
+**Approccio:** nuovo importer che estende l'infrastruttura generica `Importer\CSVImporter` (parsing,
+mapping colonne, validazione, batch, file anomalie già pronti). La classe vive nell'**override path
+PSR-4** `modules/articoli/custom/src/Import/` → zero file core toccati. Registrazione nel menu
+*Strumenti → Importa* via INSERT idempotente in `zz_imports` + `zz_imports_lang`.
+
+**Mappatura sedi (odin → OSM `id_sede`):**
+- Feroleto (odin sede 1) → `id_sede = 1` (riga `an_sedi` "Feroleto Antico").
+- Rende (odin sede 2) → `id_sede = 0` (Sede legale dell'azienda predefinita, *Kartiell Verona SRL*).
+
+**Semantica:** quantità = valore **assoluto (inventario)**. Per ogni sede si legge la giacenza
+attuale (`Articolo::getGiacenze()`), si calcola il delta e si registra un singolo movimento di
+rettifica (`Articolo::movimenta($delta, 'Inventario da importazione', $data, true, ['id_sede'=>…])`).
+Cella vuota → sede **non toccata** (solo uno `0` esplicito azzera). Articolo (per `codice`) non
+trovato → riga scartata con errore; l'importer **non crea** articoli.
+
+**Tasto "Scarica esempio CSV":** la `CSVImporter::createExample()` del core **non** crea la
+cartella di destinazione (`files/import/`). Alla prima generazione dell'esempio — prima che sia mai
+stato caricato un CSV di import — la cartella può non esistere e `fopen()` fallisce: il bottone non
+produce nulla. La classe **override** `createExample()` garantendo la cartella (`mkdir` se assente)
+prima di delegare a `parent::createExample()`, come già fa `saveFailedRecordsWithErrors()`. Fix
+self-contained nella nostra classe, nessun file core toccato.
+
+**File toccati:**
+- `modules/articoli/custom/src/Import/GiacenzeCSV.php` `[CUSTOM]` — nuovo: classe
+  `Modules\Articoli\Import\GiacenzeCSV` (`getAvailableFields`, `import`, `getExample`, override
+  `createExample` per garantire la cartella di destinazione).
+- `modules/mncs/update/1_7.sql` `[CUSTOM]` — nuovo: registrazione importer in `zz_imports` +
+  `zz_imports_lang` (id_lang predefinita 1).
+
+**Commit:** (vedi git log)
+
+**Caveat:**
+- Mappatura sedi **hardcoded** nella costante `GiacenzeCSV::SEDI`: se cambiano gli `id_sede` di
+  Feroleto/Rende in OSM va aggiornata lì.
+- L'importer ignora i flag `update_record`/`add_record` del core (non c'è il concetto di "aggiungi
+  articolo" per le sole giacenze).
+
+---
+
 ## 2026-06-12 — Articoli: campo personalizzato "Alias" (controparte di uf_code k-odin)
 
 **Obiettivo:** dare agli articoli OSM un campo testo "Alias", controparte di `prodotti.uf_cod`
