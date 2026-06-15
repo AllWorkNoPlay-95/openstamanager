@@ -16,6 +16,44 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-15 — Modulo "Azzeramento giacenze" (Strumenti)
+
+**Obiettivo:** dare un punto in OSM per fare "piazza pulita" delle giacenze prima di un nuovo
+inventario, partendo dai dati di OSM (che puo' contenere articoli diversi dal catalogo odin).
+
+**Approccio:** nuovo **modulo custom registrato** `mncs_azzeramento_giacenze` sotto *Strumenti*
+(`options='custom'` → pagina senza datatable, come Backups/Import). **100% additivo: nessun file
+core toccato, nessun override** (scelta esplicita per non mascherare upstream). La pagina ha un
+bottone che scarica un CSV nel tracciato dell'importer "Giacenze magazzino": `Codice;Qta Feroleto;
+Qta Rende` con ogni riga `<codice>;0;0`, **solo** per gli articoli con giacenza ≠ 0 in OSM (sedi
+1=Feroleto, 0=Rende). Caricandolo in *Strumenti → Importa → "Giacenze magazzino"* le giacenze vanno
+a 0. **Lo storico resta**: l'import registra movimenti di scarico, non cancella nulla; un articolo
+gia' a 0 → nessun movimento.
+
+**Cosa è cambiato:**
+- Generazione CSV via AJAX `op=genera-csv` → l'action scrive il file in `files/mncs_azzeramento_
+  giacenze/` (mkdir se assente, come per la createExample) e ne restituisce l'URL; il browser lo
+  scarica. Query: `mg_articoli` JOIN `mg_movimenti` (id_sede 0,1) con `HAVING SUM(...) <> 0` per
+  sede.
+- Registrazione modulo in `zz_modules` + `zz_modules_lang` sotto il parent *Strumenti*. Nessun
+  `zz_group_module` (i moduli senza grant sono visibili all'admin, come Backups e
+  `mncs_incassi_conti`).
+
+**File toccati:**
+- `modules/mncs_azzeramento_giacenze/edit.php` `[CUSTOM]` — nuovo: pagina con avviso + bottone.
+- `modules/mncs_azzeramento_giacenze/actions.php` `[CUSTOM]` — nuovo: `op=genera-csv` (query + CSV).
+- `modules/mncs_azzeramento_giacenze/init.php` `[CUSTOM]` — nuovo: bootstrap minimale.
+- `modules/mncs/update/1_8.sql` `[CUSTOM]` — nuovo: registrazione modulo (idempotente).
+
+**Commit:** (vedi git log)
+
+**Caveat:**
+- Il CSV azzera **solo** gli articoli che hanno giacenza in OSM (sorgente = OSM, non il catalogo
+  odin): e' il comportamento voluto. Va caricato manualmente nell'importer Giacenze.
+- Modulo `options='custom'`: la pagina e' resa da `edit.php` (niente datatable), come Backups/Import.
+
+---
+
 ## 2026-06-15 — Articoli: importer CSV "Giacenze magazzino" per sede
 
 **Obiettivo:** importare da CSV le giacenze di magazzino degli articoli su due sedi. Il file
