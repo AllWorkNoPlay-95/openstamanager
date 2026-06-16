@@ -1,0 +1,70 @@
+/*
+ * MNCS — Dropdown ricerca articoli (select2).
+ * Prefisso "zz-" per caricarsi dopo style.css nel bundle style.min.css (cascade).
+ *
+ * Il campo `text` della risposta contiene HTML a due righe + un prefisso codice + un marker
+ * di stato ES (vedi modules/articoli/ajax/select.php). Qui si decide cosa mostrare nel
+ * dropdown (riga1 descrizione + riga2 SKU/ALIAS/F/R) vs nella selection box (codice + descrizione).
+ */
+
+/* Riga2 (SKU - ALIAS - F: .. - R: ..) visibile solo nel dropdown */
+.select2-results__option .mncs-art-code {
+    display: none;
+}
+
+.select2-results__option .mncs-art-sub {
+    display: block;
+    margin-top: 2px;
+    font-size: 11px;
+    line-height: 1.2;
+    color: #6c757d;
+}
+
+/* In hover/evidenziazione l'opzione diventa blu scuro con testo bianco: la riga2 resta
+   leggibile in bianco, ma più spenta del titolo. */
+.select2-results__option--highlighted .mncs-art-sub {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+/* Selection box: mostra "codice - descrizione", nasconde la riga2 */
+.select2-selection .mncs-art-code {
+    display: inline;
+}
+
+.select2-selection .mncs-art-sub {
+    display: none;
+}
+
+/* Marker di stato ES: solo dato, mai visibile */
+.mncs-art-es {
+    display: none !important;
+}
+
+/* Dropdown articoli più largo (scoping: la classe è aggiunta dal JS al solo dropdown aperto) */
+.select2-dropdown.mncs-art-dd {
+    min-width: 520px;
+    width: -moz-max-content;
+    width: max-content;
+    max-width: 90vw;
+}
+
+/* Footer con indicatore ES in coda al dropdown (mostrato solo quando ES è attivo) */
+.mncs-es-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    border-top: 1px solid #e9ecef;
+    padding: 6px 10px;
+    font-size: 12px;
+    line-height: 1.3;
+    background: #fff;
+}
+
+.mncs-es-footer .mncs-es-right {
+    white-space: nowrap;
+}
+
+.mncs-es-footer .fa-bolt {
+    margin-right: 5px;
+}

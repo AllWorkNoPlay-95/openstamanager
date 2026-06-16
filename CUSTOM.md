@@ -16,6 +16,54 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-16 — Dropdown ricerca articoli: riga2 (SKU/ALIAS/F/R), indicatore ES, dropdown più largo
+
+**Obiettivo:** migliorare il dropdown select2 della ricerca articoli: (1) seconda riga sotto la
+descrizione con `SKU - ALIAS - F: <giacenza Feroleto> - R: <giacenza Rende>`; (2) footer mostrato
+**solo quando Elasticsearch è attivo** ("Ricerca avanzata ElasticSearch attiva" con `fa fa-bolt`
+verde a sinistra, "Powered by K-Odin" small/muted a destra); se ES non è disponibile nessun footer;
+(3) pannello dropdown più largo.
+
+**Approccio (no edit al JS core):** il core `assets/src/js/functions/select.js` ha `escapeMarkup`
+identità e rende `data.text` sia nel dropdown sia nella selection box. Quindi tutto il rendering passa
+per il campo `text` (prodotto da `select.php`, già nostro): riga1 = descrizione, un prefisso
+`<span class="mncs-art-code">` col codice, riga2 `<div class="mncs-art-sub">`, e un marker nascosto
+`<i class="mncs-art-es" data-es="0|1">`. CSS e JS custom (bundlati, nessun file core JS toccato)
+mostrano/nascondono per contesto, allargano il dropdown e disegnano il footer.
+
+- **SKU** = `mg_articoli.codice` (aggiunto in SELECT come `mncs_codice`, valido anche in acquisto dove
+  `codice` può essere il codice fornitore). **ALIAS** = `mncs_alias` (EAV, subquery in SELECT).
+- **F/R** = giacenze OSM da `mg_movimenti`: F = `id_sede=1` (Feroleto Antico), R = `id_sede=0` (sede
+  legale, Rende). Calcolate in un'unica query `GROUP BY id_articolo` sui risultati. Mostrate sempre.
+- **Indicatore ES**: `select.php` marca ogni riga con `data-es` (ES usato in quella ricerca = helper
+  non-null); il JS custom legge il marker via `MutationObserver` e aggiorna il footer.
+
+**File toccati:**
+- `modules/articoli/ajax/select.php` `[CORE]` — SELECT `mncs_codice` + subquery `mncs_alias`; query
+  giacenze F/R; `text` a due righe + marker `mncs-art-es`; campi riga `es_active`,
+  `giacenza_feroleto`, `giacenza_rende`.
+- `assets/src/css/zz-mncs-select2-articoli.css` `[CUSTOM]` — visibilità riga2/codice per contesto,
+  larghezza dropdown (scoped `.mncs-art-dd`), stile footer. Prefisso `zz-` per caricarsi dopo
+  `style.css` nel bundle `style.min.css`.
+- `assets/src/js/base/mncs-select2-articoli.js` `[CUSTOM]` — su `select2:open` dei select articoli:
+  scoping larghezza + footer creato/aggiornato via observer SOLO se l'ultima ricerca è da ES
+  (`data-es="1"`); altrimenti il footer non viene mostrato. Bundlato in `custom.min.js`.
+
+**Build:** rigenerare gli asset con `gulp srcCSS srcJS` (o rebuild immagine OSM). NB: `assets/src`
+non è live-synced in dev (watch usa `rebuild`), quindi serve un rebuild dell'immagine per persistere.
+
+**Commit:** (vedi git log)
+
+**Caveat:**
+- File **CORE** `select.php`: convive con i blocchi Alias (subquery) ed Elasticsearch già presenti —
+  ri-controllare al merge upstream.
+- `text` contiene HTML: i valori dinamici sono passati per `htmlspecialchars` (escapeMarkup è identità).
+- Gli `id_sede` 0/1 (Rende/Feroleto) sono specifici di questa installazione (costanti in `select.php`).
+- In acquisti il `codice_fornitore` non compare più nel testo visibile (resta nei dati di riga).
+- Selection box: mostra `codice - descrizione`; il dropdown mostra descrizione + riga2.
+
+---
+
 ## 2026-06-16 — Ricerca articoli AJAX via Elasticsearch k-odin (fallback nativo)
 
 **Obiettivo:** instradare la ricerca articoli AJAX (`case 'articoli'` del select condiviso) sul
