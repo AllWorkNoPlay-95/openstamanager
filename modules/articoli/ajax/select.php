@@ -47,6 +47,13 @@ switch ($resource) {
             `mg_articoli`.`prezzo_vendita_ivato` AS prezzo_vendita_ivato,
             `mg_articoli`.'.($prezzi_ivati ? '`minimo_vendita_ivato`' : '`minimo_vendita`').' AS minimo_vendita,';
 
+        // MNCS: codice articolo reale (per lo SKU della riga2) e Alias EAV (`mncs_alias`), usati
+        // nella seconda riga del dropdown. `mncs_codice` resta il codice articolo anche in acquisto
+        // (dove `codice` può valere il codice fornitore).
+        $query .= '
+            `mg_articoli`.`codice` AS mncs_codice,
+            (SELECT `zfr`.`value` FROM `zz_field_record` `zfr` INNER JOIN `zz_fields` `zf` ON `zf`.`id` = `zfr`.`id_field` WHERE `zf`.`html_name` = '.prepare('mncs_alias').' AND `zfr`.`id_record` = `mg_articoli`.`id`) AS mncs_alias,';
+
         // Informazioni relative al fornitore specificato dal documenti di acquisto
         if ($usare_dettaglio_fornitore) {
             $query .= '
@@ -220,6 +227,31 @@ switch ($resource) {
         $data = AJAX::selectResults($query, $where, $filter, $search_fields, $limit, $custom);
         $rs = $data['results'];
 
+        // MNCS: stato ES di questa ricerca (true = risultati da Elasticsearch), per l'indicatore nel
+        // footer del dropdown. $mncs_es_cods è definito solo se c'è un termine di ricerca.
+        $mncs_es_active = isset($mncs_es_cods) && is_array($mncs_es_cods);
+
+        // MNCS: giacenze per sede da mostrare nella riga2 del dropdown — F = "Feroleto Antico"
+        // (id_sede=1), R = sede legale "Rende" (id_sede=0). Una sola query per tutti i risultati.
+        $mncs_sede_feroleto = 1;
+        $mncs_sede_rende = 0;
+        $mncs_giacenze = [];
+        $mncs_ids = array_column($rs, 'id');
+        if (!empty($mncs_ids)) {
+            $mncs_in_ids = implode(',', array_map('prepare', $mncs_ids));
+            $mncs_rows_g = $dbo->fetchArray('SELECT `id_articolo`,
+                SUM(CASE WHEN `id_sede` = '.prepare($mncs_sede_feroleto).' THEN `qta` ELSE 0 END) AS feroleto,
+                SUM(CASE WHEN `id_sede` = '.prepare($mncs_sede_rende).' THEN `qta` ELSE 0 END) AS rende
+                FROM `mg_movimenti` WHERE `id_articolo` IN ('.$mncs_in_ids.') GROUP BY `id_articolo`');
+            foreach ($mncs_rows_g as $mncs_g_row) {
+                $mncs_giacenze[$mncs_g_row['id_articolo']] = $mncs_g_row;
+            }
+        }
+        // Escape HTML dei valori dinamici (escapeMarkup di select2 è identità → l'HTML è renderizzato).
+        $mncs_esc = function ($v) {
+            return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+        };
+
         // Utilizzo dell'impostazione per disabilitare articoli con quantità <= 0
         $permetti_movimenti_sotto_zero = setting('Permetti selezione articoli con quantità minore o uguale a zero in Documenti di Vendita') ? true : $superselect['permetti_movimento_a_zero'];
 
@@ -237,11 +269,27 @@ switch ($resource) {
         foreach ($rs as $k => $r) {
             $qta_da_usare = $sedi_non_impostate ? 0 : ($qta_per_articolo[$r['id']] ?? 0);
 
+            // MNCS: dropdown a due righe. Riga1 = descrizione (il codice resta visibile solo nella
+            // selection box, via CSS). Riga2 = SKU - ALIAS - F: feroleto - R: rende.
+            $mncs_cod = (string) $r['mncs_codice'];
+            $mncs_alias = trim((string) ($r['mncs_alias'] ?? ''));
+            $mncs_g = $mncs_giacenze[$r['id']] ?? ['feroleto' => 0, 'rende' => 0];
+            $mncs_riga2 = $mncs_esc($mncs_cod)
+                .($mncs_alias !== '' ? ' - '.$mncs_esc($mncs_alias) : '')
+                .' - F: '.Translator::numberToLocale($mncs_g['feroleto'])
+                .' - R: '.Translator::numberToLocale($mncs_g['rende']);
+
             $rs[$k] = array_merge($r, [
-                'text' => $r['codice'].' - '.$r['descrizione'].' '.(!$r['servizio'] ? '('.Translator::numberToLocale($qta_da_usare).(!empty($r['um']) ? ' '.$r['um'] : '').')' : '').($r['codice_fornitore'] ? ' ('.$r['codice_fornitore'].')' : ''),
+                'text' => '<span class="mncs-art-code">'.$mncs_esc($mncs_cod).' - </span>'
+                    .$mncs_esc($r['descrizione'])
+                    .'<div class="mncs-art-sub">'.$mncs_riga2.'</div>'
+                    .'<i class="mncs-art-es" data-es="'.($mncs_es_active ? '1' : '0').'" hidden></i>',
                 'qta' => $qta_da_usare,
                 'qta_sede' => isset($superselect['id_sede_partenza']) || isset($superselect['id_sede_destinazione']) ? $qta_da_usare : null,
                 'disabled' => $qta_da_usare <= 0 && !$permetti_movimenti_sotto_zero && !$r['servizio'],
+                'es_active' => $mncs_es_active,
+                'giacenza_feroleto' => 0 + $mncs_g['feroleto'],
+                'giacenza_rende' => 0 + $mncs_g['rende'],
             ]);
         }
 
