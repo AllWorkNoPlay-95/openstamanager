@@ -16,6 +16,94 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-16 — Ricerca articoli AJAX via Elasticsearch k-odin (fallback nativo)
+
+**Obiettivo:** instradare la ricerca articoli AJAX (`case 'articoli'` del select condiviso) sul
+motore **Elasticsearch** di k-odin (lo stesso `ProductSelector` del frontend Next.js), con filtro
+`vendita`, mantenendo la **ricerca SQL nativa OSM come fallback** quando ES non risponde.
+
+**Approccio (merge-safe):** ES non sostituisce la query OSM, la *arricchisce a monte*. Un helper
+**CUSTOM** in `modules/mncs/shared/elastic-articoli.php` chiama l'endpoint node-api
+`GET /prodotti/elastic/search?filter=vendita&codes_only=1` (chiamata server-to-server diretta su
+rete Docker, **path senza `/api`** perché bypassa nginx) e ottiene solo l'elenco di codici in
+ordine di rilevanza ES. I codici corrispondono 1:1 a `mg_articoli.codice` (= k-odin
+`IFNULL(cod, old_cod)`). Nel `select.php` un **hook CORE minimo** (~12 righe) sostituisce, quando ES
+risponde, i `$search_fields` LIKE con un singolo `mg_articoli.codice IN (...)`; se l'helper torna
+`null` (ES KO) restano i LIKE nativi. Tutta la logica vive nel custom; il diff CORE è minuscolo.
+
+Config via env passate al container `openstamanager` da `docker-compose.yml`: `OSM_NODE_INTERFACE_URL`
+(default `http://node-api:8000`) e `OSM_NODE_INTERFACE_TOKEN`. Il token autentica su node-api tramite
+un **utente di servizio dedicato** `osm-service` (riga `users`, ruolo `osmservice`) creato dalla migration
+Knex k-odin `20260616113306_osm_service_user.ts` (idempotente, legge il token da
+`process.env.OSM_NODE_INTERFACE_TOKEN`). Lato node aggiunto il param opt-in `codes_only` a
+`node/src/api/routes/prodotti/elastic/search.ts` (default invariato).
+
+**Cosa è cambiato:** quando l'utente digita un termine, i risultati arrivano dal catalogo vendibile
+ES (matching fuzzy/multi-campo) invece che dai soli `LIKE`. Il JSON select2 (prezzi, giacenze, IVA,
+provvigioni, optgroup categorie) resta prodotto da `select.php`: contratto invariato. Vale per
+**tutti** i contesti della sorgente `articoli` (scelta concordata), non solo le vendite.
+
+**File toccati:**
+- `modules/mncs/shared/elastic-articoli.php` `[CUSTOM]` — nuovo helper `mncs_elastic_search_articoli_cods()`
+  (Guzzle, timeout brevi, dedup ordine ES, ritorna `array`|`null`).
+- `modules/articoli/ajax/select.php` `[CORE]` — nel `case 'articoli'`, in coda a `if (!empty($search))`:
+  include dell'helper + sostituzione condizionale di `$search_fields` con `codice IN (...)` / `1=0`.
+
+**Modifiche fuori da questo fork (repo k-odin):** `docker-compose.yml` (env OSM), `.env`/`.env.example`,
+`node/src/api/routes/prodotti/elastic/search.ts` (param `codes_only`), migration `osm_service_user`.
+
+**Commit:** (vedi git log)
+
+**Caveat:**
+- File **CORE**: ri-controllare al merge upstream il blocco `$search_fields` di `select.php` (convive
+  con il blocco Alias del 2026-06-16).
+- Filtro `vendita` a livello `/prodotti/elastic/search` = `stato IN (0,1,4,7,10)` (parità col
+  frontend), non la logica più stringente dell'endpoint `/inventario`.
+- Negli **acquisti** (`dir='uscita'`) ES non copre i campi fornitore (`mg_fornitore_articolo`): se
+  necessario, l'hook si può gatare su `dir=='entrata'` (una sola `if`).
+- Ranking: si mantiene l'`ORDER BY` per categoria di `select.php` (utile al raggruppamento optgroup);
+  il set risultati è ES-quality ma l'ordine finale nel dropdown resta quello OSM.
+- L'attivazione richiede che il container OSM legga le nuove env (ricreare il servizio
+  `openstamanager`) e che la migration k-odin sia stata applicata con `OSM_NODE_INTERFACE_TOKEN` impostato.
+
+---
+
+## 2026-06-16 — Ricerca articoli per Alias nelle righe documento (fatture di vendita)
+
+**Obiettivo:** digitando un **codice Alias** (campo personalizzato `mncs_alias`, controparte di
+`prodotti.uf_cod`/uf_code di k-odin) nel select di ricerca articoli, l'articolo associato deve
+comparire tra i risultati. Caso d'uso critico: inserimento righe nelle **fatture di vendita**
+(`modules/fatture/edit.php` → `"ajax-source": "articoli"`).
+
+**Approccio:** l'Alias vive in EAV (`zz_field_record`), non su `mg_articoli`. Aggiunta **una sola**
+clausola di ricerca al `case 'articoli'` del select condiviso, riusando la stessa subquery correlata
+risolta per `html_name = 'mncs_alias'` già usata dalla vista elenco (`modules/mncs/update/1_6.sql`).
+Subquery (non JOIN) per non alterare `DISTINCT`/`GROUP BY` della query esistente.
+
+Override `custom/` scartato: `AJAX::find()` (`src/AJAX.php`) sostituisce **integralmente** il file
+core quando esiste la controparte `custom/` → avrebbe richiesto di duplicare tutte le ~415 righe di
+`select.php` (tutti i `case`), con drift da upstream. Modifica core minima + voce qui = scelta più
+sicura al merge (stesso pattern del fix `search.php` del 2026-06-09).
+
+**Cosa è cambiato:** il termine cercato matcha ora anche il valore Alias dell'articolo, in `OR` con
+gli altri campi e in `AND` con i filtri esistenti (`attivo = 1`, `deleted_at IS NULL`, ecc.). Vale
+per tutti i documenti che usano la sorgente `articoli` (vendita e acquisto), non solo le fatture.
+
+**File toccati:**
+- `modules/articoli/ajax/select.php` `[CORE]` — nel `case 'articoli'`, dentro `if (!empty($search))`:
+  aggiunta una `$search_fields[]` con subquery EAV su `zz_field_record`/`zz_fields` per `mncs_alias`.
+
+**Commit:** (vedi git log)
+
+**Caveat:**
+- File **CORE**: ri-controllare al merge upstream del blocco `$search_fields` di `select.php`.
+- La subquery correlata gira per riga candidata: impatto trascurabile alla scala attuale (LIKE già
+  presenti su più campi + LIMIT), ma da tenere a mente se l'elenco articoli cresce molto.
+- L'Alias **non** viene mostrato nell'etichetta del risultato (campo `text`): cambia solo cosa fa
+  *match*, non cosa si *vede*. Se serve evidenziarlo, va aggiunto a SELECT + costruzione `text`.
+
+---
+
 ## 2026-06-15 — Modulo "Azzeramento giacenze" (Strumenti)
 
 **Obiettivo:** dare un punto in OSM per fare "piazza pulita" delle giacenze prima di un nuovo
