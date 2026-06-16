@@ -182,6 +182,9 @@ switch ($resource) {
             $search_fields[] = '`mg_articoli_lang`.`title` LIKE '.prepare('%'.$search.'%');
             $search_fields[] = '`mg_articoli`.`codice` LIKE '.prepare('%'.$search.'%');
             $search_fields[] = 'CONCAT(`mg_articoli`.`codice`, " - ", `mg_articoli_lang`.`title`) LIKE '.prepare('%'.$search.'%');
+            // Ricerca anche per Alias (campo personalizzato EAV `mncs_alias`, controparte di uf_code k-odin):
+            // digitando un codice alias l'articolo associato compare tra i risultati (es. righe fatture di vendita).
+            $search_fields[] = '(SELECT `zfr`.`value` FROM `zz_field_record` `zfr` INNER JOIN `zz_fields` `zf` ON `zf`.`id` = `zfr`.`id_field` WHERE `zf`.`html_name` = '.prepare('mncs_alias').' AND `zfr`.`id_record` = `mg_articoli`.`id`) LIKE '.prepare('%'.$search.'%');
             $search_fields[] = '`categoria_lang`.`title` LIKE '.prepare('%'.$search.'%');
             $search_fields[] = '`mg_articoli_barcode`.`barcode` LIKE '.prepare('%'.$search.'%');
             $search_fields[] = '`sottocategoria_lang`.`title` LIKE '.prepare('%'.$search.'%');
@@ -197,6 +200,21 @@ switch ($resource) {
                 $search_fields[] = '`mg_fornitore_articolo`.`codice_fornitore` LIKE '.prepare('%'.$search.'%');
                 $search_fields[] = '`mg_fornitore_articolo`.`barcode_fornitore` LIKE '.prepare('%'.$search.'%');
             }
+
+            // MNCS: ricerca via Elasticsearch k-odin (con fallback sulla ricerca LIKE nativa).
+            // Se ES risponde, si vincola la query ai codici restituiti (= `mg_articoli`.`codice`),
+            // mantenendo intatto il JSON select2 prodotto sotto. Vedi modules/mncs/shared/elastic-articoli.php.
+            include_once __DIR__.'/../../mncs/shared/elastic-articoli.php';
+            $mncs_es_cods = mncs_elastic_search_articoli_cods($search);
+            if (is_array($mncs_es_cods)) {
+                if (empty($mncs_es_cods)) {
+                    $search_fields = ['1=0']; // ES ha risposto senza match
+                } else {
+                    $mncs_in = implode(',', array_map('prepare', $mncs_es_cods));
+                    $search_fields = ['`mg_articoli`.`codice` IN ('.$mncs_in.')'];
+                }
+            }
+            // null => ES non disponibile => si mantengono i $search_fields LIKE nativi.
         }
 
         $data = AJAX::selectResults($query, $where, $filter, $search_fields, $limit, $custom);
