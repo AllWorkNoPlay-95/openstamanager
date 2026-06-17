@@ -16,6 +16,36 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-17 — Validazione: blocco cliente con sconto + listino > EV3
+
+**Obiettivo:** impedire di assegnare a un'anagrafica cliente **contemporaneamente** un piano di sconto
+vendite "reale" (`mg_piani_sconto.prc_guadagno > 0`) e un listino superiore a EV3 (EV4/EV5). Sarebbe un
+doppio sconto sul prezzo già scontato del listino alto. Una **maggiorazione** (`prc_guadagno < 0`) sui
+listini alti resta permessa.
+
+**Come:** gate **bloccante al salvataggio**. Il piano sconto vendite (`id_piano_sconto_vendite`) e il
+listino (`id_listino`) si assegnano solo dalla scheda di modifica → si controlla solo il `case 'update'`.
+Il guard gira **prima** di ogni `save()`/commit: se la combinazione è vietata fa
+`rollbackTransaction()` + `flash()->error()` + `redirect_url()` + `exit` (stesso pattern del controllo
+permessi in `actions.php` core). Nessun salvataggio parziale; l'utente resta sulla scheda con l'avviso.
+Il listino "alto" è riconosciuto dal codice `[EV4]`/`[EV5]` nel `mg_listini.nome` (identificatore
+stabile; gli id auto-increment variano tra installazioni).
+
+**File toccati:**
+- `modules/mncs/shared/cliente-sconto-listino.php` `[CUSTOM]` — nuovo helper
+  `mncs_cliente_sconto_listino_in_conflitto($id_listino, $id_piano_sconto_vendite): bool` (unico punto
+  di verità della regola).
+- `modules/anagrafiche/actions.php` `[CORE]` — guard di ~8 righe in cima a `case 'update':`
+  (`include_once` dell'helper + blocco con rollback/redirect/exit). Edit chirurgico, non override.
+
+**Commit:** (vedi git log)
+
+**Caveat:** la rilevazione del listino alto dipende dal codice `[EVn]` nel nome del listino: se i
+listini EV4/EV5 vengono rinominati perdendo il token, il controllo non scatta. Al merge upstream
+ri-controllare l'inizio del `case 'update':` di `modules/anagrafiche/actions.php` (file CORE attivo).
+
+---
+
 ## 2026-06-17 — UI: campo personalizzato "Alias" spostato in cima alla scheda Articolo
 
 **Obiettivo:** mostrare l'Alias vicino al campo "Codice" invece che in fondo al form.
