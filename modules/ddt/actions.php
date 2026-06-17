@@ -820,7 +820,8 @@ switch (filter('op')) {
                     ->select('prc_guadagno')
                     ->where('id', $anagrafica_model->$join)
                     ->first() : null;
-                if (!empty($piano_sconto)) {
+                include_once __DIR__.'/../mncs/shared/sconto-articolo.php';
+                if (!empty($piano_sconto) && mncs_sconto_articolo_attivo($id_articolo)) {
                     $sconto = parseScontoCombinato($piano_sconto->prc_guadagno.'+'.$sconto);
                 }
 
@@ -939,7 +940,8 @@ switch (filter('op')) {
                 ->select('prc_guadagno')
                 ->where('id', $anagrafica_model->$join)
                 ->first() : null;
-            if (!empty($piano_sconto)) {
+            include_once __DIR__.'/../mncs/shared/sconto-articolo.php';
+            if (!empty($piano_sconto) && mncs_sconto_articolo_attivo($riga->isArticolo() ? $riga->id_articolo : null)) {
                 $sconto = parseScontoCombinato($piano_sconto->prc_guadagno.'+'.$sconto);
             }
 
