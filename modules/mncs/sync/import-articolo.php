@@ -150,6 +150,15 @@ foreach ($prodotti as $p) {
             }
         }
 
+        // "Sconto su articolo" (colonna diretta mncs_sconto_su_articolo su mg_articoli, da 1_10.sql):
+        // gate booleano del piano sconto cliente. Contrariamente ad alias/campi opzionali, lo 0 è un
+        // valore significativo (non "assente"): si scrive sempre che la chiave sia presente nel payload,
+        // così OSM riflette il valore k-odin (key 'sconto_articolo' in prodotti_listini_meta).
+        if (array_key_exists('sconto_su_articolo', $p)) {
+            $sconto = ((int) $p['sconto_su_articolo'] === 1) ? 1 : 0;
+            database()->update('mg_articoli', ['mncs_sconto_su_articolo' => $sconto], ['id' => $articolo->id]);
+        }
+
         // Listini EV1..EV5 + AUX1..AUX4 → mg_listini_articoli (dir 'entrata' = vendita).
         // Ogni listino porta gli scaglioni già pronti come range [minimo, massimo]
         // calcolati lato k-odin: una riga per scaglione.
