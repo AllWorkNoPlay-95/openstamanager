@@ -54,8 +54,9 @@ OSM scopre i **moduli registrati** (`zz_modules`) solo come cartelle **flat** `m
   DRY/KISS; includerle dove servono (`include_once`). Creare la cartella **solo quando serve**
   davvero (KISS), non in anticipo.
 - **Update SQL**: in `modules/mncs/update/` (vedi sezione sopra).
-- **Override del core**: in `*/custom/` (vedi `Structure::filepath()`), da **minimizzare** perché
-  mascherano upstream.
+- **Override del core**: in `*/custom/` (meccanismo `App::filepath()` — vedi la sezione
+  «Meccanismo override custom» sotto), da **minimizzare** perché mascherano upstream. Quasi sempre
+  è **replace dell'intero file**: preferire una modifica `[CORE]` minima e documentata.
 
 ## Custom Modifications Documentation (CUSTOM.md)
 
@@ -71,3 +72,39 @@ OSM scopre i **moduli registrati** (`zz_modules`) solo come cartelle **flat** `m
   ri-controllare al merge upstream).
 - Mantenerlo strutturato e cronologico (più recente in alto), una sezione per feature/modifica. Non
   lasciarlo divergere dalla realtà: se una modifica viene annullata, rimuovere o barrare la voce.
+
+## Meccanismo override custom (`App::filepath`): quasi sempre replace-whole-file
+
+Sintesi verificata sul codice (`src/App.php:321-337`, `src/Traits/PathTrait.php:40-43`, `src/AJAX.php:227-266`).
+Serve a decidere, prima di toccare un file CORE, se conviene un override `*/custom/`.
+
+- **Non esiste alcuna classe `Structure`.** Il meccanismo reale è `App::filepath($path, $file)`: nel
+  `$path` c'è il token `|custom|`, sostituito con `''` (candidato core) o con `/custom` (candidato
+  custom). Ritorna **un solo path**, preferendo il custom se esiste, altrimenti il core. **Nessun
+  merge/append**: il file custom **maschera per intero** il core ⇒ chi lo usa deve ri-implementare
+  tutto, e perde in silenzio ogni bugfix upstream di quel file.
+- **Conseguenza pratica.** Override custom = **replace-whole-file** per: `modules/<mod>/{actions,edit,
+  init,bulk,validation}.php`, `modules/<mod>/ajax/<resource>.php` (entro il modulo), i file
+  `include/common/<x>.php` (via `App::load` → candidato `include/custom/common/<x>.php`), `include/
+  {top,bottom,form}.php`, e le stampe (`stampa.php`/`pdfgen.*` — if/else esplicito ma sempre replace).
+- **Le UNICHE estensioni davvero additive** (preferirle quando applicabili):
+  - **Classi `src/` dei moduli** (PSR-4, `composer.json`): una classe **nuova** in
+    `modules/<mod>/custom/src/` è additiva; stesso FQCN invece sostituisce. Le classi core top-level
+    (`App`, `AJAX`, `Modules`, `Prints`, …) mappano solo `src/` ⇒ **non** override-abili.
+  - **Ajax tra moduli diversi**: `AJAX::find()` è first-match-wins tra moduli, ma replace entro lo
+    stesso modulo.
+  - **Hook di iniezione puri**: `include/custom/extra/extra.php` (PHP/JS globale su ogni pagina
+    autenticata) e `include/custom/extra/login.php` — inclusi solo se esistono, non sovrascrivono nulla.
+  - **Campi aggiuntivi dinamici** (`zz_fields`/`zz_field_record`): aggiungono un campo a una scheda
+    (render + salvataggio automatici) con **zero file core**, via sola `INSERT` in `modules/mncs/
+    update/`. Già usati nel fork (campo *Alias*). **Caveat:** il valore vive in EAV, non in colonna;
+    se il dato è letto su **hot-path** (es. ricalcolo righe documento) la lettura diventa un join su
+    `zz_field_record` — pattern noto-lento (vedi indice `mncs_zfr_id_record`, `1_9.sql`): in quel caso
+    preferire una colonna `mncs_` tipizzata + edit `[CORE]` minimo.
+- **Regola operativa.** Un override `*/custom/` conviene **solo** quando si rimpiazza davvero l'intero
+  comportamento di un file *poco toccato da upstream*, o per aggiungere qualcosa di **nuovo** via i
+  meccanismi additivi sopra. Per modifiche **chirurgiche** dentro file CORE attivamente manutenuti da
+  upstream (dispatcher `actions.php`, `include/common/articolo.php`, ajax articoli): preferire l'edit
+  `[CORE]` minimo. Converte un conflitto git **rumoroso e revisionabile** al merge in un override che
+  invece produrrebbe **deriva silenziosa** — il rischio esatto da evitare. Precedente: in `CUSTOM.md`
+  l'override custom di `select.php` è stato scartato per questa stessa ragione.
