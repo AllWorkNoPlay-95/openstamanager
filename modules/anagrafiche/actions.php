@@ -34,6 +34,17 @@ switch (post('op')) {
 
         // no break
     case 'update':
+        // [CUSTOM mncs] Blocco salvataggio: un cliente non può avere insieme un piano di sconto
+        // vendite (sconto > 0) e un listino superiore a EV3 (EV4/EV5). Vedi
+        // modules/mncs/shared/cliente-sconto-listino.php e openstamanager/CUSTOM.md.
+        include_once __DIR__.'/../mncs/shared/cliente-sconto-listino.php';
+        if (mncs_cliente_sconto_listino_in_conflitto(post('id_listino') ?: null, post('id_piano_sconto_vendite') ?: null)) {
+            $dbo->rollbackTransaction();
+            flash()->error(tr('Impossibile salvare: non è consentito assegnare a un cliente sia uno sconto (piano di sconto vendite) sia un listino superiore a EV3 (EV4/EV5). Rimuovere lo sconto oppure abbassare il listino.'));
+            redirect_url(base_path_osm().'/editor.php?id_module='.$id_module.'&id_record='.$id_record);
+            exit;
+        }
+
         // Informazioni sulla sede
         $sede = $anagrafica->sedeLegale;
         $sede->indirizzo = post('indirizzo');
