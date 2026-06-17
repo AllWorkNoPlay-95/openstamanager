@@ -54,9 +54,12 @@ if (!function_exists('mncs_elastic_search_articoli_cods')) {
         }
 
         try {
+            // Timeout brevi: la ricerca è nel percorso interattivo (select2 ad ogni tasto) e tiene
+            // un worker Apache per la durata della chiamata. Se node-api rallenta, si fa fallback
+            // rapido alla ricerca nativa invece di accumulare worker occupati.
             $client = new \GuzzleHttp\Client([
-                'timeout' => 2.0,
-                'connect_timeout' => 1.0,
+                'timeout' => 1.0,
+                'connect_timeout' => 0.5,
             ]);
 
             $response = $client->request('GET', rtrim($base, '/').'/prodotti/elastic/search', [
