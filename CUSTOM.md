@@ -16,6 +16,27 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-17 — UI: campo personalizzato "Alias" spostato in cima alla scheda Articolo
+
+**Obiettivo:** mostrare l'Alias vicino al campo "Codice" invece che in fondo al form.
+
+**Come:** i campi personalizzati OSM hanno una sola leva di posizione, il flag `zz_fields.top`
+(`top=0` → blocco `custom_fields_bottom` in fondo; `top=1` → blocco `custom_fields_top`, che
+`editor.php` fa `prepend` su `#edit-form`, quindi primo elemento, sopra "Codice"). L'Alias era nato
+con `top=0` (1_6.sql): lo portiamo a `top=1`.
+
+**File toccati:**
+- `modules/mncs/update/1_11.sql` `[CUSTOM]` — `UPDATE zz_fields SET top=1 WHERE html_name='mncs_alias'`
+  (dato su tabella CORE, per `html_name` stabile, idempotente; zero file core).
+
+**Commit:** (vedi git log)
+
+**Caveat:** richiede l'esecuzione dell'updater OSM (sequenza `modules/mncs/update/`) per applicare
+l'UPDATE. La posizione resta "top del form" (sopra Codice): il meccanismo campi personalizzati non
+consente un inline arbitrario accanto a uno specifico campo (solo top/bottom).
+
+---
+
 ## 2026-06-17 — Feature: toggle per-articolo "Sconto su articolo" (gate del piano sconto cliente)
 
 **Obiettivo:** poter abilitare/disabilitare **per singolo articolo** l'applicazione del piano sconto
@@ -41,10 +62,19 @@ sconto (parte da sconto 0 → solo listino).
   articolo, se OFF lo sconto viene riportato al solo listino (`aggiornaScontoArticolo()`), ignorando
   il piano sconto precaricato. Gli altri moduli non cambiano (gia' partono da sconto 0 a video).
 - UI: checkbox "Sconto su articolo" nella scheda articolo.
+- Sync k-odin → OSM: il flag viaggia nel payload prodotti (campo `sconto_su_articolo`, 0/1) e l'endpoint
+  lo scrive direttamente su `mg_articoli.mncs_sconto_su_articolo`. Sorgente k-odin: `prodotti_listini_meta`
+  con `meta_key='sconto_articolo'` (meta assente/NULL → 0, come la vista k-odin `ifnull(...,0)`). A
+  differenza di alias/campi opzionali, lo 0 è un valore significativo: si scrive sempre quando la chiave
+  è presente nel payload (sync autoritativo, OSM riflette k-odin).
 
 **File toccati:**
 - `modules/mncs/update/1_10.sql` `[CUSTOM]` — `ALTER TABLE mg_articoli ADD COLUMN IF NOT EXISTS
   mncs_sconto_su_articolo TINYINT(1) NOT NULL DEFAULT 1` (idempotente; colonna additiva mncs-prefissata).
+- `modules/mncs/sync/import-articolo.php` `[CUSTOM]` — scrive `mncs_sconto_su_articolo` su `mg_articoli`
+  per ogni prodotto con la chiave `sconto_su_articolo` nel payload.
+- Lato k-odin (repo genitore): `node/src/shared/prodotti/osm/fetch-osm-payload.ts` invia
+  `sconto_su_articolo` letto da `prodotti_listini_meta` (key `sconto_articolo`).
 - `modules/mncs/shared/sconto-articolo.php` `[CUSTOM]` — helper `mncs_sconto_articolo_attivo()`.
 - `modules/articoli/edit.php` `[CORE]` — checkbox "Sconto su articolo".
 - `modules/articoli/actions.php` `[CORE]` — salvataggio del campo nel case `update`.
