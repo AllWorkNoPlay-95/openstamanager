@@ -29,6 +29,16 @@ switch ($resource) {
      * - id_anagrafica
      */
     case 'articoli':
+        // MNCS: la ricerca articoli è read-only sulla sessione ($superselect è già stato letto in
+        // ajax_select.php). Rilasciamo SUBITO il lock di sessione PHP: senza, ogni richiesta tiene
+        // il lock esclusivo per tutta la durata (inclusa la chiamata HTTP a node-api), e select2 —
+        // che spara una richiesta per tasto — serializza tutto, bloccando dietro di sé anche il
+        // polling Hooks e la navigazione → l'intera UI sembra "bloccata"/pending. Chiudere qui la
+        // sessione permette a ricerche concorrenti, Hooks e navigazione di procedere in parallelo.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+
         $sedi_non_impostate = !isset($superselect['id_sede_partenza']) && !isset($superselect['id_sede_destinazione']);
         $prezzi_ivati = setting('Utilizza prezzi di vendita comprensivi di IVA');
         $usare_dettaglio_fornitore = $superselect['dir'] == 'uscita';

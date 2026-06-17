@@ -16,6 +16,60 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-17 — FIX performance: indice su zz_field_record (lista Articoli/dropdown lentissimi)
+
+**Sintomo:** `ajax_dataload.php?id_module=21` (datatable lista Articoli) impiegava **>3 minuti** anche
+per 50 righe; la pagina restava "pending" e, tenendo il lock di sessione per minuti, bloccava l'intera
+UI. Anche la ricerca articoli del dropdown ne risentiva.
+
+**Causa (EXPLAIN):** la colonna **Alias** della lista e la ricerca per alias usano una subquery
+correlata EAV su `zz_field_record` (`WHERE zfr.id_record = mg_articoli.id`). La tabella aveva indice
+solo su `id_field`: senza indice su `id_record`, ogni valutazione faceva un **full scan** (~32k righe,
+`type=ALL`). Su ~34k articoli → minuti.
+
+**Fix:** indice `zz_field_record(id_record, id_field)`. Dopo: EXPLAIN passa a `type=ref` (1 riga) e la
+query reale della lista (subquery Alias + ORDER BY title + LIMIT 50) scende da **>3 min a ~100ms**.
+
+**File toccati:**
+- `modules/mncs/update/1_9.sql` `[CUSTOM]` — `ALTER TABLE zz_field_record ADD INDEX IF NOT EXISTS
+  mncs_zfr_id_record (id_record, id_field)` (idempotente; tabella CORE, indice additivo mncs-prefissato).
+
+**Commit:** (vedi git log)
+
+**Caveat:** `zz_field_record` è tabella core OSM; l'indice è additivo e non maschera upstream. In prod
+l'indice viene creato dall'updater OSM al deploy (sequenza `modules/mncs/update/`).
+
+---
+
+## 2026-06-16 — FIX critico: lock di sessione PHP bloccava l'intera UI durante la ricerca articoli
+
+**Sintomo:** la ricerca articoli restava "pending" e l'intero OSM si bloccava (anche il polling
+Hooks e la navigazione), sia in dev che in prod.
+
+**Causa (provata):** `ajax_select.php` tiene il **lock esclusivo di sessione PHP** per tutta la durata
+della richiesta. La ricerca articoli ora fa anche una chiamata HTTP sincrona a node-api (ES), quindi
+ogni richiesta dura di più; select2 ne spara una **per tasto** → si serializzano sul lock di sessione
+e **ogni** altra richiesta dello stesso utente (Hooks, navigazione, altre AJAX) resta in coda dietro.
+Misura: con una raffica di 10 ricerche, una richiesta Hooks sulla **stessa** sessione impiegava
+**2.56s**, contro **0.01s** su sessione diversa → head-of-line blocking da session lock.
+
+**Fix:** la ricerca è read-only sulla sessione (`$superselect` è già letto da `ajax_select.php`).
+Si rilascia subito il lock con `session_write_close()` all'inizio del `case 'articoli'`. Inoltre i
+timeout Guzzle verso node-api sono stati abbassati (1.0s totale / 0.5s connect) per non tenere
+occupati i worker Apache se node-api rallenta (fallback rapido alla ricerca nativa). Dopo il fix la
+Hooks in raffica scende a ~0.6s (sola contesa di worker, non più serializzazione).
+
+**File toccati:**
+- `modules/articoli/ajax/select.php` `[CORE]` — `session_write_close()` in testa al `case 'articoli'`.
+- `modules/mncs/shared/elastic-articoli.php` `[CUSTOM]` — timeout/connect_timeout ridotti.
+
+**Commit:** (vedi git log)
+
+**Caveat:** dopo `session_write_close()` la richiesta non deve scrivere in `$_SESSION` (la ricerca non
+lo fa). Vale solo per il `case 'articoli'`; gli altri resource del select restano invariati.
+
+---
+
 ## 2026-06-16 — Dropdown ricerca articoli: riga2 (SKU/ALIAS/F/R), indicatore ES, dropdown più largo
 
 **Obiettivo:** migliorare il dropdown select2 della ricerca articoli: (1) seconda riga sotto la
