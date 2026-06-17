@@ -1,0 +1,12 @@
+-- Posiziona il campo personalizzato "Alias" (html_name 'mncs_alias') in cima alla scheda
+-- Articolo, vicino al campo "Codice".
+--
+-- I campi personalizzati OSM hanno una sola leva di posizione, il flag `zz_fields.top`:
+--   top=0 -> blocco `custom_fields_bottom` (in fondo al form)
+--   top=1 -> blocco `custom_fields_top`, che editor.php fa `prepend` su `#edit-form`
+--            (primo elemento del form, subito sopra la riga di "Codice").
+-- L'Alias era stato creato con top=0 (1_6.sql) e finiva in fondo: lo portiamo a top=1.
+--
+-- Dato (non schema) su tabella CORE OSM: UPDATE per `html_name` stabile, idempotente
+-- (riapplicare reimposta top=1, no-op). Nessun file core toccato.
+UPDATE `zz_fields` SET `top` = 1 WHERE `html_name` = 'mncs_alias';
