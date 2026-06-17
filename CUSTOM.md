@@ -16,6 +16,69 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-06-17 — Feature: toggle per-articolo "Sconto su articolo" (gate del piano sconto cliente)
+
+**Obiettivo:** poter abilitare/disabilitare **per singolo articolo** l'applicazione del piano sconto
+legato all'anagrafica cliente (`an_anagrafiche.id_piano_sconto_vendite` → `mg_piani_sconto.prc_guadagno`)
+sulle righe dei documenti di vendita. Campo "Sconto su articolo": **ON** (default) → il piano sconto
+cliente puo' essere combinato sopra il listino (comportamento storico OSM); **OFF** → si applica solo
+il listino standard, senza il piano sconto cliente.
+
+**Come funzionava prima:** il piano sconto veniva **sempre** combinato su ogni riga via
+`parseScontoCombinato($piano_sconto->prc_guadagno.'+'.$sconto)`, in ogni modulo documento (2 punti per
+modulo: riga nuova `add_articolo` + riga rigenerata `update-price`). Per le sole **Fatture**, nel
+flusso manuale a video, il piano sconto entra come prefill di `modules/fatture/row-add.php` (campo
+`#sconto` precaricato con `prc_guadagno`); negli altri moduli il flusso manuale non precarica il piano
+sconto (parte da sconto 0 → solo listino).
+
+**Soluzione:**
+- Nuova colonna `mncs_sconto_su_articolo` su `mg_articoli` (TINYINT, default 1 → non distruttivo).
+- Helper unico `mncs_sconto_articolo_attivo($id_articolo)` che decide se applicare il piano sconto.
+- Gate lato server: ogni `parseScontoCombinato($piano_sconto...)` ora e' condizionato anche
+  all'helper, passando l'id articolo della riga (`$id_articolo` per riga nuova,
+  `$riga->isArticolo() ? $riga->id_articolo : null` per la rigenerazione prezzi).
+- Flusso manuale Fatture: il flag e' esposto nel JSON di `dettagli_articolo` e, nel JS di selezione
+  articolo, se OFF lo sconto viene riportato al solo listino (`aggiornaScontoArticolo()`), ignorando
+  il piano sconto precaricato. Gli altri moduli non cambiano (gia' partono da sconto 0 a video).
+- UI: checkbox "Sconto su articolo" nella scheda articolo.
+
+**File toccati:**
+- `modules/mncs/update/1_10.sql` `[CUSTOM]` — `ALTER TABLE mg_articoli ADD COLUMN IF NOT EXISTS
+  mncs_sconto_su_articolo TINYINT(1) NOT NULL DEFAULT 1` (idempotente; colonna additiva mncs-prefissata).
+- `modules/mncs/shared/sconto-articolo.php` `[CUSTOM]` — helper `mncs_sconto_articolo_attivo()`.
+- `modules/articoli/edit.php` `[CORE]` — checkbox "Sconto su articolo".
+- `modules/articoli/actions.php` `[CORE]` — salvataggio del campo nel case `update`.
+- `modules/articoli/ajax/complete.php` `[CORE]` — flag aggiunto al JSON `dettagli_articolo`.
+- `include/common/articolo.php` `[CORE]` — `getScontoSuArticolo()` + gate del prefill sconto manuale.
+- `modules/fatture/actions.php` `[CORE]` — gate ai 2 punti (`add_articolo`, `update-price`).
+- `modules/ordini/actions.php` `[CORE]` — gate ai 2 punti.
+- `modules/ddt/actions.php` `[CORE]` — gate ai 2 punti.
+- `modules/preventivi/actions.php` `[CORE]` — gate ai 2 punti.
+- `modules/interventi/actions.php` `[CORE]` — gate ai 2 punti.
+- `modules/contratti/actions.php` `[CORE]` — gate ai 2 punti.
+
+**Commit:** (vedi git log)
+
+**Caveat (merge upstream):** i 9 file CORE sono modifiche minimali e localizzate (una condizione `&&`
+o una riga), incluse via `include_once __DIR__.'/../mncs/shared/sconto-articolo.php'`. Al merge
+upstream ricontrollare i blocchi `parseScontoCombinato($piano_sconto...)` in tutti i moduli documento
+(upstream potrebbe rifattorizzarli) e il blocco sconto nel change-handler di `include/common/articolo.php`.
+La colonna `mg_articoli` viene creata dall'updater OSM al deploy (sequenza `modules/mncs/update/`):
+finche' non gira, il flag UI risulta vuoto ma l'helper fa fallback ON (comportamento storico).
+
+**Perche' CORE e non override `*/custom/`:** valutato e scartato (coerente col precedente di
+`select.php`). L'override OSM (`App::filepath`) e' **replace-whole-file**: un `custom/actions.php`
+copierebbe interi dispatcher (743–1700 righe l'uno, ~7.800 tot) mascherando in silenzio i bugfix
+upstream — e `git blame` mostra che quei dispatcher sono **attivamente** editati da upstream proprio
+accanto al nostro gate. Nessun hook additivo intercetta l'op-dispatch e dopo `parseScontoCombinato`
+il valore originale dello sconto e' perso (ricalcolo post-hoc lossy). La checkbox si poteva fare a
+zero file core via campo `zz_fields`, ma il flag e' letto **per-riga sull'hot-path** del pricing:
+in EAV diventerebbe un join noto-lento (`1_9.sql`), quindi colonna `mncs_` + edit CORE minimo e'
+il data-modeling corretto. Conclusione: edit CORE chirurgico (conflitto git visibile e revisionabile)
+> override custom (deriva silenziosa). Vedi `openstamanager/CLAUDE.md` § «Meccanismo override custom».
+
+---
+
 ## 2026-06-17 — FIX performance: indice su zz_field_record (lista Articoli/dropdown lentissimi)
 
 **Sintomo:** `ajax_dataload.php?id_module=21` (datatable lista Articoli) impiegava **>3 minuti** anche

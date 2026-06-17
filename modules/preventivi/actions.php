@@ -555,7 +555,8 @@ switch (post('op')) {
 
             // Aggiunta sconto combinato se è presente un piano di sconto nell'anagrafica
             $piano_sconto = Anagrafica::find($id_anagrafica)->pianoScontoVendite;
-            if (!empty($piano_sconto)) {
+            include_once __DIR__.'/../mncs/shared/sconto-articolo.php';
+            if (!empty($piano_sconto) && mncs_sconto_articolo_attivo($id_articolo)) {
                 $sconto = parseScontoCombinato($piano_sconto->prc_guadagno.'+'.$sconto);
             }
 
@@ -666,7 +667,8 @@ switch (post('op')) {
 
             // Aggiunta sconto combinato se è presente un piano di sconto nell'anagrafica
             $piano_sconto = Anagrafica::find($id_anagrafica)->pianoSconto($dir);
-            if (!empty($piano_sconto)) {
+            include_once __DIR__.'/../mncs/shared/sconto-articolo.php';
+            if (!empty($piano_sconto) && mncs_sconto_articolo_attivo($riga->isArticolo() ? $riga->id_articolo : null)) {
                 $sconto = parseScontoCombinato($piano_sconto->prc_guadagno.'+'.$sconto);
             }
 

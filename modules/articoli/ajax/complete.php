@@ -317,7 +317,13 @@ switch ($resource) {
         // Ultimo prezzo al cliente
         $ultimo_prezzo = $dbo->fetchArray('SELECT '.($prezzi_ivati ? '(`prezzo_unitario_ivato`-`sconto_unitario_ivato`)' : '(`prezzo_unitario`-`sconto_unitario`)').' AS prezzo_ultimo FROM `co_righe_documenti`  INNER JOIN `co_documenti` ON `co_documenti`.`id`=`co_righe_documenti`.`id_documento` INNER JOIN `co_tipi_documento` ON `co_tipi_documento`.`id`=`co_documenti`.`id_tipo_documento` WHERE `id_articolo`='.prepare($id_articolo).' AND `id_anagrafica`='.prepare($id_anagrafica).' AND `co_tipi_documento`.`dir`='.prepare($direzione).' ORDER BY `data` DESC LIMIT 0,1');
 
-        $results = array_merge($prezzi, $listini, $listini_sempre_visibili, $prezzo_articolo, $ultimo_prezzo);
+        // Flag custom MNCS "Sconto su articolo": indica se il piano sconto cliente puo' essere
+        // applicato a questo articolo. Esposto al JS (include/common/articolo.php) per gestire il
+        // prefill manuale dello sconto in fattura. Vedi modules/mncs/shared/sconto-articolo.php.
+        $mncs_flag = $dbo->fetchOne('SELECT `mncs_sconto_su_articolo` FROM `mg_articoli` WHERE `id` = '.prepare($id_articolo));
+        $mncs_sconto_su_articolo = [['mncs_sconto_su_articolo' => (int) ($mncs_flag['mncs_sconto_su_articolo'] ?? 1)]];
+
+        $results = array_merge($prezzi, $listini, $listini_sempre_visibili, $prezzo_articolo, $ultimo_prezzo, $mncs_sconto_su_articolo);
 
         echo json_encode($results);
 

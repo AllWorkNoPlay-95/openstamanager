@@ -242,6 +242,7 @@ switch (post('op')) {
         $componente = post('componente_filename');
         $articolo->componente_filename = $componente;
         $articolo->attivo = post('attivo');
+        $articolo->mncs_sconto_su_articolo = post('mncs_sconto_su_articolo') ? 1 : 0;
         $articolo->note = post('note');
         $articolo->save();
 

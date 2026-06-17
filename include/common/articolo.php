@@ -163,7 +163,11 @@ $("#id_articolo").on("change", function() {
             verificaPrezzoArticolo();
         }
 
-        if ($("#sconto").val().toEnglish() === 0){
+        if (getScontoSuArticolo() === 0) {
+            // Articolo con "Sconto su articolo" disattivato: ignora il piano sconto cliente
+            // eventualmente precaricato (row-add) e applica solo lo sconto di listino.
+            aggiornaScontoArticolo();
+        } else if ($("#sconto").val().toEnglish() === 0){
             aggiornaScontoArticolo();
         } else {
             verificaScontoArticolo();
@@ -304,6 +308,21 @@ function getPrezzoUltimo() {
     }
 
     return dettaglio_ultimo ? parseFloat(dettaglio_ultimo.prezzo_ultimo) : 0;
+}
+
+/**
+* Restituisce il flag custom MNCS "Sconto su articolo" (1 = piano sconto cliente applicabile, 0 = no).
+* Default 1 quando il dato non e disponibile, per preservare il comportamento storico.
+*/
+function getScontoSuArticolo() {
+    const data = globals.aggiunta_articolo.dettagli;
+    if (!data) return 1;
+    for (const dettaglio of data) {
+        if (dettaglio.mncs_sconto_su_articolo != null) {
+            return parseInt(dettaglio.mncs_sconto_su_articolo);
+        }
+    }
+    return 1;
 }
 
 /**

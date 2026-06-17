@@ -1527,7 +1527,8 @@ switch (post('op')) {
 
                 // Aggiunta sconto combinato se è presente un piano di sconto nell'anagrafica
                 $piano_sconto = getPianoSconto($id_anagrafica);
-                if (!empty($piano_sconto)) {
+                include_once __DIR__.'/../mncs/shared/sconto-articolo.php';
+                if (!empty($piano_sconto) && mncs_sconto_articolo_attivo($id_articolo)) {
                     $sconto = parseScontoCombinato($piano_sconto.'+'.$sconto);
                 }
 
@@ -1704,7 +1705,8 @@ switch (post('op')) {
 
             // Aggiunta sconto combinato se è presente un piano di sconto nell'anagrafica
             $piano_sconto = getPianoSconto($id_anagrafica);
-            if (!empty($piano_sconto)) {
+            include_once __DIR__.'/../mncs/shared/sconto-articolo.php';
+            if (!empty($piano_sconto) && mncs_sconto_articolo_attivo($riga->isArticolo() ? $riga->id_articolo : null)) {
                 $sconto = parseScontoCombinato($piano_sconto.'+'.$sconto);
             }
 

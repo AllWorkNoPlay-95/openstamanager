@@ -103,6 +103,9 @@ if ($numero_attributi > 0) {
                         <div class="col-md-4">
                             {[ "type": "checkbox", "label": "<?php echo tr('Attivo'); ?>", "name": "attivo", "help": "<?php echo tr('Seleziona per rendere attivo l\'articolo'); ?>", "value": "$attivo$", "placeholder": "<?php echo tr('Articolo attivo'); ?>" ]}
                         </div>
+                        <div class="col-md-4">
+                            {[ "type": "checkbox", "label": "<?php echo tr('Sconto su articolo'); ?>", "name": "mncs_sconto_su_articolo", "help": "<?php echo tr('Se attivo, applica il piano sconto del cliente; altrimenti solo il listino standard'); ?>", "value": "$mncs_sconto_su_articolo$", "placeholder": "<?php echo tr('Sconto su articolo'); ?>" ]}
+                        </div>
                     </div>
 
                     <div class="row">
