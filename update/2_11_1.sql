@@ -1,4 +1,3 @@
-
 UPDATE `zz_modules` SET `options` = "SELECT
     |select|
 FROM
@@ -20,7 +19,15 @@ FROM
     LEFT JOIN `zz_marche` as modello ON `modello`.`id` = `mg_articoli`.`id_modello`
 WHERE
     1=1 AND `mg_articoli`.`deleted_at` IS NULL
+GROUP BY
+    `mg_articoli`.`id`
 HAVING
     2=2
 ORDER BY
     `mg_articoli_lang`.`title`" WHERE `name` = "Articoli";
+
+ALTER TABLE `em_list_receiver` DROP FOREIGN KEY `em_list_receiver_ibfk_1`; ALTER TABLE `em_list_receiver` ADD CONSTRAINT `em_list_receiver_ibfk_1` FOREIGN KEY (`id_list`) REFERENCES `em_lists`(`id`) ON DELETE CASCADE ON UPDATE RESTRICT;
+
+UPDATE `em_lists` SET `query` = "SELECT id, 'Modules\\\\Anagrafiche\\\\Anagrafica' AS tipo_lista FROM an_anagrafiche WHERE deleted_at IS NULL" WHERE `name` = "Tutte le Anagrafiche (Sedi legali)";
+
+UPDATE `em_lists` SET `query` = "SELECT id, 'Modules\\\\Anagrafiche\\\\Referente' AS tipo_lista FROM an_referenti" WHERE `name` = "Tutti i Referenti";

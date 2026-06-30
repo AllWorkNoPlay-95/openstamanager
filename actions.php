@@ -180,11 +180,15 @@ if (filter('op') == 'download-allegato') {
     }
 } elseif (filter('op') == 'visualizza-modifica-allegato') {
     include_once base_dir().'/include/modifica_allegato.php';
+} elseif (filter('op') == 'visualizza-modifica-iva') {
+    include_once base_dir().'/include/modifica_iva.php';
 }
 
 // Zip allegati
 elseif (filter('op') == 'download-zip-allegati') {
-    $rs = $dbo->fetchArray('SELECT * FROM zz_files WHERE id_module='.prepare($id_module).' AND id IN('.implode(',', json_decode(filter('id'))).')');
+    $ids = (array) json_decode(filter('id'));
+    $ids = array_map('intval', $ids);
+    $rs = $dbo->fetchArray('SELECT * FROM zz_files WHERE id_module='.prepare($id_module).' AND id IN('.implode(',', $ids).')');
 
     $dir = base_dir().'/'.$module->upload_directory;
     directory($dir.'tmp/');
@@ -366,13 +370,6 @@ elseif (post('op') == 'send-email') {
 
     $mail = Modules\Emails\Mail::build(user: $user, template: $template, id_record: $id_record, reset_from_template: false);
 
-    // CC e BCC dal template
-    if (!empty($template['cc'])) {
-        $mail->addReceiver($template['cc'], 'cc');
-    }
-    if (!empty($template['bcc'])) {
-        $mail->addReceiver($template['bcc'], 'bcc');
-    }
 
     // Rimozione allegati predefiniti
     $mail->resetPrints();
