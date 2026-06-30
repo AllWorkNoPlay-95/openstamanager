@@ -85,10 +85,45 @@ $query3 = 'SELECT `co_piano_dei_conti3`.*, movimenti.numero_movimenti, movimenti
 
 $terzo_livello = $dbo->fetchArray($query3);
 
+// Oltre la soglia configurabile i sottoconti del mastro vengono mostrati come
+// DataTable (ricerca + impaginazione) invece dell'elenco semplice. Il conteggio si
+// basa sul totale dei sottoconti del mastro, indipendentemente da eventuali filtri.
+$soglia_datatable = (int) setting('Soglia datatable sottoconti');
+if ($soglia_datatable <= 0) {
+    $soglia_datatable = 500;
+}
+$usa_datatable = count($terzo_livello) > $soglia_datatable;
+$datatable_id = 'sottoconti-datatable-'.$conto_secondo['id'];
+$is_economico = $conto_primo['descrizione'] == 'Economico';
+
 if (!empty($terzo_livello)) {
+    $table_attr = $usa_datatable
+        ? ' id="'.$datatable_id.'" class="table table-striped table-hover table-sm js-sottoconti-datatable"'
+        : ' class="table table-striped table-hover table-sm"';
+
     echo '
     <div class="table-responsive">
-        <table class="table table-striped table-hover table-sm">
+        <table'.$table_attr.'>';
+
+    // DataTables richiede un <thead>: lo aggiungo solo in modalità datatable,
+    // con lo stesso numero di colonne delle righe (3 Patrimoniale, 4 Economico).
+    if ($usa_datatable) {
+        echo '
+            <thead>
+                <tr>
+                    <th>'.tr('Sottoconto').'</th>
+                    <th class="text-right">'.tr('Importo').'</th>';
+        if ($is_economico) {
+            echo '
+                    <th class="text-right">'.tr('Importo reddito').'</th>';
+        }
+        echo '
+                    <th></th>
+                </tr>
+            </thead>';
+    }
+
+    echo '
             <tbody>';
     foreach ($terzo_livello as $conto_terzo) {
         // Se il conto non ha documenti collegati posso eliminarlo
@@ -263,3 +298,32 @@ echo '
         });
     }
 </script>';
+
+// Inizializzazione DataTable dei sottoconti quando il mastro supera la soglia.
+if ($usa_datatable) {
+    echo '
+<script>
+    $(function() {
+        var $dt = $("#'.$datatable_id.'");
+        if ($dt.length && !$.fn.DataTable.isDataTable($dt)) {
+            var dt = $dt.DataTable({
+                language: globals.translations.datatables,
+                retrieve: true,
+                ordering: false,
+                searching: true,
+                paging: true,
+                lengthChange: true,
+                pageLength: 25,
+                order: [],
+            });
+
+            // Mantiene il filtro: se la pagina ha una ricerca globale attiva, la
+            // DataTable parte già filtrata sul termine cercato.
+            var term = $("#input-cerca").val();
+            if (term) {
+                dt.search(term).draw();
+            }
+        }
+    });
+</script>';
+}

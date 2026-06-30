@@ -38,3 +38,11 @@ INSERT INTO `zz_settings_lang` (`id_lang`, `id_record`, `title`, `help`) VALUES
 (2, (SELECT `id` FROM `zz_settings` WHERE `nome` = 'Logo menu'), 'Extended menu logo', 'Upload an image to display in the sidebar when expanded. Recommended dimensions: 489x91 px. If no file is uploaded, the default logo is used.'),
 (1, (SELECT `id` FROM `zz_settings` WHERE `nome` = 'Logo menu quadrato / favicon'), 'Logo menu quadrato / favicon', 'Carica un\'immagine da visualizzare nel menu laterale quando è compresso (favicon/quadrato). Dimensioni consigliate: 1041x1024 px. Se non viene caricato nessun file, viene utilizzato il logo predefinito.'),
 (2, (SELECT `id` FROM `zz_settings` WHERE `nome` = 'Logo menu quadrato / favicon'), 'Collapsed menu logo', 'Upload an image to display in the sidebar when collapsed (favicon/square). Recommended dimensions: 1041x1024 px. If no file is uploaded, the default logo is used.');
+
+-- Soglia oltre la quale i sottoconti di un mastro del Piano dei conti vengono mostrati come tabella con ricerca e impaginazione
+INSERT INTO `zz_settings` (`nome`, `valore`, `tipo`, `editable`, `sezione`, `order`, `is_user_setting`) VALUES
+('Soglia datatable sottoconti', '500', 'integer', 1, 'Piano dei conti', 10, 0);
+
+INSERT INTO `zz_settings_lang` (`id_lang`, `id_record`, `title`, `help`) VALUES
+(1, (SELECT `id` FROM `zz_settings` WHERE `nome` = 'Soglia datatable sottoconti'), 'Soglia datatable sottoconti', 'Numero di sottoconti oltre il quale, espandendo un mastro nel Piano dei conti, i sottoconti vengono mostrati in una tabella con ricerca e impaginazione invece dell\'elenco semplice. Default 500.'),
+(2, (SELECT `id` FROM `zz_settings` WHERE `nome` = 'Soglia datatable sottoconti'), 'Subaccount datatable threshold', 'Number of subaccounts above which, when expanding an account in the Chart of accounts, subaccounts are shown in a searchable, paginated table instead of the plain list. Default 500.');
