@@ -16,6 +16,26 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-10-13 — Build: pin `api-platform/laravel` a `~4.3.17`
+
+**Obiettivo:** ripristinare la build dell'immagine OSM. Senza `composer.lock`, una build fresca
+installava `api-platform` 4.4.x, che esporta la spec come **OpenAPI 3.2.0**: `openapi-generator`
+(step `update-openapi-client` di `npm run build-OSM`) la rifiuta ("Issues with the OpenAPI input")
+e la build fallisce. Con 4.3.17 la spec esportata è 3.1.0 (contenuto altrimenti identico).
+
+**File toccati:**
+- `composer.json` `[CORE]` — `"api-platform/laravel": "^4.2.14"` → `"~4.3.17"`, più pin esplicito
+  `~4.3.17` dei sotto-pacchetti `api-platform/*` (documentation, hal, hydra, json-api, json-schema,
+  jsonld, metadata, openapi, serializer, state): `laravel` 4.3.x li richiede con `^4.3`, quindi senza
+  pin salivano comunque a 4.4 (ed è `api-platform/openapi` a emettere la 3.2.0).
+
+**Commit:** (vedi git log)
+
+**Caveat:** al merge upstream, se upstream cambia il vincolo di `api-platform/laravel` → conflitto
+su questa riga. Rimuovere il pin quando `openapi-generator` supporterà OpenAPI 3.2.
+
+---
+
 ## 2026-06-17 — Validazione: blocco cliente con sconto + listino > EV3
 
 **Obiettivo:** impedire di assegnare a un'anagrafica cliente **contemporaneamente** un piano di sconto
