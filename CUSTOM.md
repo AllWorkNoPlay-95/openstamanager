@@ -16,6 +16,27 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-10-26 — Build: patch di sicurezza nell'immagine Docker
+
+**Obiettivo:** chiudere le CVE HIGH con fix disponibile rimaste dopo la rimozione di openapi-generator
+(audit con `bin/vuln-audit` del repo k-odin).
+
+**File toccati:**
+- `docker/Dockerfile` `[CORE]`:
+  - `apt-get upgrade -y` nel layer dei pacchetti di sistema (libexpat, brotli, openssl Debian 12);
+  - `npm install -g npm@latest` dopo l'installazione di Node (l'npm bundled porta `undici` e
+    `brace-expansion` vulnerabili);
+  - `rm -rf node_modules` dopo `npm run build-OSM`: serve solo alla build degli asset ed è già negato
+    a runtime da `.htaccess` (`RewriteRule ^node_modules/ - [F,L]`).
+
+**Commit:** (vedi git log)
+
+**Caveat:** al merge upstream, conflitti probabili sulle stesse righe del Dockerfile. Il
+`node_modules` resta nel layer di `yarn install` (cache): non è accessibile nell'immagine finale ma
+non ne riduce la dimensione.
+
+---
+
 ## 2026-10-26 — Build: rimozione openapi-generator, Node 24, patch axios
 
 **Obiettivo:** ridurre le vulnerabilità dell'immagine OSM segnalate da Trivy (vuln-monitor).

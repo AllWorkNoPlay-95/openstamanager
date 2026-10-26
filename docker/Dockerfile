@@ -4,7 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     APP_DIR="/var/www/html"
 
 # Dipendenze di sistema, estensioni PHP e Node.js 24
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     git \
     libcurl4-openssl-dev \
     libicu-dev \
@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && a2enmod rewrite \
     && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
+    && npm install -g npm@latest \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
@@ -60,9 +61,12 @@ RUN corepack enable \
 # (vendor/ e node_modules/, esclusi da .dockerignore) restano in cache.
 COPY . .
 
-# Autoloader ottimizzato (richiede il source presente) e compilazione asset di produzione
+# Autoloader ottimizzato (richiede il source presente) e compilazione asset di produzione.
+# node_modules serve solo alla build (a runtime è negato da .htaccess): rimosso per non
+# portarsi nell'immagine le dipendenze di build e le loro vulnerabilità.
 RUN composer dump-autoload --no-ansi --no-interaction --optimize --no-scripts \
-    && npm run build-OSM
+    && npm run build-OSM \
+    && rm -rf node_modules
 
 # Inizializzazione directory e file di configurazione vuoti richiesti da OSM
 RUN git config --global --add safe.directory ${APP_DIR} \
