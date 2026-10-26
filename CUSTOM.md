@@ -16,6 +16,38 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-10-26 — Build: rimozione openapi-generator, Node 24, patch axios
+
+**Obiettivo:** ridurre le vulnerabilità dell'immagine OSM segnalate da Trivy (vuln-monitor).
+`@openapitools/openapi-generator-cli` (pin 2.25.0) portava `axios 1.12.2`, `glob 11.0.3` e richiedeva
+una JRE (jackson, handlebars, openjdk-17); Node 20 è EOL e il suo npm bundled ha dipendenze vulnerabili.
+I client OpenAPI generati (`src/OpenAPI/Client` PHP, `window.API` in `assets/dist/js/api.js`) non sono
+usati da nessun codice del progetto.
+
+**File toccati:**
+- `package.json` `[CORE]`:
+  - rimossa la dipendenza `@openapitools/openapi-generator-cli`;
+  - `resolutions`: tolto il pin di openapi-generator-cli, aggiunto `"axios": "^1.16.0"` per le
+    eventuali dipendenze transitive;
+  - `build-OSM`: `gulp && npm run-script update-openapi-client` →
+    `gulp && npm run copy-vendor-css-folder && <scrive assets/dist/js/api.js vuoto>`.
+    `copy-vendor-css-folder` resta (asset della UI docs API usati da `APIForUIController`);
+    `api.js` vuoto perché `src/App.php` lo include in ogni pagina (evita il 404).
+    Gli script `update-openapi-client*` restano definiti ma non più invocati.
+- `docker/Dockerfile` `[CORE]`: Node.js `setup_20.x` → `setup_24.x`; rimosso `default-jre-headless`
+  (serviva solo al jar di openapi-generator).
+
+**Commit:** (vedi git log)
+
+**Caveat:**
+- Al merge upstream: conflitti probabili su `package.json` (dipendenze/`build-OSM`) e `docker/Dockerfile`.
+  Se upstream inizia a usare il client generato (`window.API` / `OpenAPI\Client`), questa modifica va
+  rivista.
+- Il pin `api-platform ~4.3.17` (voce 2026-10-13) esisteva solo per openapi-generator: ora si potrebbe
+  rimuovere (non fatto qui).
+
+---
+
 ## 2026-10-13 — Build: pin `api-platform/laravel` a `~4.3.17`
 
 **Obiettivo:** ripristinare la build dell'immagine OSM. Senza `composer.lock`, una build fresca

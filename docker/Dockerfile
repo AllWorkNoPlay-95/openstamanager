@@ -3,10 +3,9 @@ FROM php:8.5-apache-bookworm
 ENV DEBIAN_FRONTEND=noninteractive \
     APP_DIR="/var/www/html"
 
-# Dipendenze di sistema, estensioni PHP e Node.js 20
+# Dipendenze di sistema, estensioni PHP e Node.js 24
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
-    default-jre-headless \
     libcurl4-openssl-dev \
     libicu-dev \
     libonig-dev \
@@ -29,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         xsl \
         zip \
     && a2enmod rewrite \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/*
