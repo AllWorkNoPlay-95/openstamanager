@@ -515,6 +515,7 @@ if (!empty($righe)) {
         // Individuazione articolo con codice relativo
         $id_articolo = null;
         $codice_principale = null;
+        $barcode = null; // MNCS: azzerato per riga, altrimenti il barcode della riga precedente si propaga
 
         foreach ($codici as $codice) {
             $tipo = strtolower((string) $codice['CodiceTipo']);
@@ -545,12 +546,20 @@ if (!empty($righe)) {
 
         if (!empty($codice_principale)) {
             if (!empty($anagrafica) && empty($id_articolo)) {
-                $result = $database->fetchOne('SELECT `id_articolo` AS id FROM `mg_fornitore_articolo` WHERE ((`codice_fornitore` = '.prepare($codice_principale).' OR `barcode_fornitore` = '.prepare($barcode).') AND id_fornitore = '.prepare($anagrafica->id).' AND DELETED_AT IS NULL)');
+                // MNCS: condizione sul barcode solo se presente, altrimenti `barcode_fornitore = ''` abbina qualsiasi codice
+                $where_barcode = !empty($barcode) ? ' OR `barcode_fornitore` = '.prepare($barcode) : '';
+                $result = $database->fetchOne('SELECT `id_articolo` AS id FROM `mg_fornitore_articolo` WHERE ((`codice_fornitore` = '.prepare($codice_principale).$where_barcode.') AND id_fornitore = '.prepare($anagrafica->id).' AND DELETED_AT IS NULL)');
                 $id_articolo = $result['id'] ?? null;
                 if (empty($id_articolo)) {
-                    $result = $database->fetchOne('SELECT `id_articolo` AS id FROM `mg_fornitore_articolo` WHERE ((REPLACE(`codice_fornitore`, " ", "") = '.prepare($codice_principale).' OR `barcode_fornitore` = '.prepare($barcode).') AND id_fornitore = '.prepare($anagrafica->id).' AND DELETED_AT IS NULL)');
+                    $result = $database->fetchOne('SELECT `id_articolo` AS id FROM `mg_fornitore_articolo` WHERE ((REPLACE(`codice_fornitore`, " ", "") = '.prepare($codice_principale).$where_barcode.') AND id_fornitore = '.prepare($anagrafica->id).' AND DELETED_AT IS NULL)');
                     $id_articolo = $result['id'] ?? null;
                 }
+            }
+
+            // MNCS: fallback sul campo Alias (codice fornitore dopo i primi 5 caratteri)
+            if (empty($id_articolo)) {
+                include_once __DIR__.'/../../modules/mncs/shared/alias-articolo.php';
+                $id_articolo = mncs_articolo_da_alias($codice_principale);
             }
 
             $id_conto_acquisto = $database->fetchOne('SELECT `id_conto_acquisto` FROM `mg_articoli` WHERE `id` = '.prepare($id_articolo))['id_conto_acquisto'];

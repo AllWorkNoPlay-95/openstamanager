@@ -445,6 +445,12 @@ switch (filter('op')) {
                     }
                 }
 
+                // MNCS: fallback sul campo Alias (codice fornitore dopo i primi 5 caratteri)
+                if (empty($id_articolo)) {
+                    include_once __DIR__.'/../../modules/mncs/shared/alias-articolo.php';
+                    $id_articolo = mncs_articolo_da_alias($codice['CodiceValore']);
+                }
+
                 if (empty($id_articolo)) {
                     $id_articolo = database()->table('mg_articoli_barcode')
                         ->join('mg_articoli', 'mg_articoli.id', '=', 'mg_articoli_barcode.id_articolo')

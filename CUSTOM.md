@@ -16,6 +16,40 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-10-30 — Import FE: fix abbinamento barcode e ricerca articolo per Alias
+
+**Obiettivo:** all'import di una fattura elettronica di acquisto, ogni riga veniva precompilata con
+lo stesso articolo (es. Caimi: tutte le righe → art. 6585). Inoltre, abbinare l'articolo tramite il
+campo personalizzato *Alias*, che contiene il codice del fornitore.
+
+**Causa del bug:** in `generate.php` la ricerca su `mg_fornitore_articolo` usa
+`codice_fornitore = X OR barcode_fornitore = <barcode>`. Senza barcode nell'XML, `prepare(null)`
+diventa `''` e la condizione `barcode_fornitore = ''` abbina qualsiasi record del fornitore con
+barcode vuoto. In più `$barcode` non veniva azzerato tra una riga e l'altra.
+
+**File toccati:**
+- `modules/mncs/shared/alias-articolo.php` `[CUSTOM]` (nuovo): `mncs_articolo_da_alias($codice)`
+  cerca l'articolo (non eliminato) con `SUBSTRING(alias, 6) = codice`, quindi salta i primi 5
+  caratteri (`PPPP-`) e non confronta il prefisso. Se ci sono più articoli col match restituisce `null`
+  (scelta manuale).
+- `plugins/importFE/generate.php` `[CORE]` (precompilazione articolo al caricamento):
+  - `$barcode = null` all'inizio di ogni riga;
+  - condizione `OR barcode_fornitore = ...` aggiunta solo se il barcode non è vuoto (`$where_barcode`);
+  - fallback `mncs_articolo_da_alias($codice_principale)` se `mg_fornitore_articolo` non trova nulla.
+- `plugins/importFE/actions.php` `[CORE]` (case `riferimenti-automatici`, "Cerca riferimenti"):
+  fallback `mncs_articolo_da_alias()` dopo `mg_fornitore_articolo` e prima della ricerca su
+  `mg_articoli_barcode`.
+
+**Commit:** (vedi git log)
+
+**Caveat:** al merge upstream verificare i due blocchi `// MNCS:` in `generate.php` e `actions.php`
+(a fine ottobre 2026 upstream ha ancora il bug del barcode). Il codice articolo nostro (`mg_articoli.codice`)
+non va mai confrontato col codice fornitore. In produzione ~430 suffissi Alias sono ripetuti su più
+articoli: per quei codici non c'è abbinamento automatico. Lettura EAV su `zz_field_record` (~33k righe)
+una volta per ogni riga della FE senza match in `mg_fornitore_articolo`.
+
+---
+
 ## 2026-10-26 — Build: patch di sicurezza nell'immagine Docker
 
 **Obiettivo:** chiudere le CVE HIGH con fix disponibile rimaste dopo la rimozione di openapi-generator
