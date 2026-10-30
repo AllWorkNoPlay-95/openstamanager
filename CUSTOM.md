@@ -16,6 +16,27 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-10-30 — Build: token GitHub per composer (build secret)
+
+**Obiettivo:** il deploy falliva su `composer install` con HTTP 429 da `codeload.github.com`
+(download anonimi limitati per IP del droplet).
+
+**File toccati:**
+- `docker/Dockerfile` `[CORE]`: `composer install` gira con `--mount=type=secret,id=github_token`;
+  se il secret non è vuoto esporta `COMPOSER_AUTH` (`github-oauth`) solo per quel comando. Il token non
+  finisce in nessun layer né nella history dell'immagine. Senza secret il comportamento è quello di prima.
+
+**Fuori dal fork (repo k-odin):** `docker-compose.yml` dichiara il secret `github_token` dalla variabile
+`OSM_COMPOSER_GITHUB_TOKEN`; `.github/workflows/build-prod.yml` la scrive nel `.env` di prod dal secret
+GitHub omonimo.
+
+**Commit:** (vedi git log)
+
+**Caveat:** richiede BuildKit (default con `docker compose` v2). Al merge upstream, conflitto probabile
+sulla riga `composer install` del Dockerfile.
+
+---
+
 ## 2026-10-30 — Import FE: fix abbinamento barcode e ricerca articolo per Alias
 
 **Obiettivo:** all'import di una fattura elettronica di acquisto, ogni riga veniva precompilata con

@@ -45,8 +45,14 @@ WORKDIR ${APP_DIR}
 # finché composer.json non cambia: modificare il source PHP non lo invalida.
 # Nel repo non c'è composer.lock; l'autoloader viene installato vuoto qui e rigenerato
 # ottimizzato dopo il COPY del source (vedi sotto), per via di optimize-autoloader + autoload.files.
+# Token GitHub (opzionale) come build secret: evita l'HTTP 429 di codeload.github.com sui download
+# anonimi. Non finisce in nessun layer; se assente, composer scarica senza autenticazione.
 COPY composer.json ./
-RUN composer install --no-ansi --no-interaction --no-scripts --no-autoloader --no-progress --prefer-dist
+RUN --mount=type=secret,id=github_token \
+    if [ -s /run/secrets/github_token ]; then \
+        export COMPOSER_AUTH="{\"github-oauth\":{\"github.com\":\"$(cat /run/secrets/github_token)\"}}"; \
+    fi; \
+    composer install --no-ansi --no-interaction --no-scripts --no-autoloader --no-progress --prefer-dist
 
 # --- Dipendenze Node ---
 # Stesso principio: il layer si invalida solo se cambiano package.json o .yarnrc.yml,
