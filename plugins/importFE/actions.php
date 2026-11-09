@@ -139,6 +139,19 @@ switch (filter('op')) {
         if (post('type') == 'auto') {
             $info = FatturaElettronica::getInfoAutoImportFE($fattura_pa);
         } else {
+            // MNCS: sede "Mix" → quote per sede su ogni riga, validate prima di creare la fattura
+            $is_mix = post('id_sede_destinazione') == 'mix';
+            if ($is_mix) {
+                include_once __DIR__.'/../../modules/mncs/shared/importfe-mix.php';
+                $errore_mix = mncs_importfe_valida_mix($fattura_pa, post('qta_sede') ?: [], post('articoli') ?: [], post('crea_articoli') ?: [], post('flag_crea_seriali') ? (post('serial') ?: []) : [], post('tipo_riga_riferimento') ?: [], post('id_riga_riferimento') ?: []);
+                if ($errore_mix) {
+                    flash()->error($errore_mix);
+                    redirect_url(base_path_osm().'/controller.php?id_module='.$id_module);
+
+                    return;
+                }
+            }
+
             $info = [
                 'id_pagamento' => post('pagamento'),
                 'id_segment' => post('id_segment'),
@@ -157,7 +170,8 @@ switch (filter('op')) {
                 'is_ritenuta_pagata' => post('is_ritenuta_pagata'),
                 'update_info' => post('update_info'),
                 'serial' => post('flag_crea_seriali') ? post('serial') : [],
-                'id_sede_destinazione' => post('id_sede_destinazione'),
+                'id_sede_destinazione' => $is_mix ? 0 : post('id_sede_destinazione'), // MNCS: Mix → testata su Sede legale
+                'qta_sede' => $is_mix ? (post('qta_sede') ?: []) : [], // MNCS
             ];
         }
 

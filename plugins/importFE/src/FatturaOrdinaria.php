@@ -182,8 +182,10 @@ class FatturaOrdinaria extends FatturaElettronica
         return $this->forceArray($linee);
     }
 
-    public function saveRighe($articoli, $iva, $conto, $movimentazione = true, $crea_articoli = [], $tipi_riferimenti = [], $id_riferimenti = [], $tipi_riferimenti_vendita = [], $id_riferimenti_vendita = [], $update_info = [], $serials = [])
+    public function saveRighe($articoli, $iva, $conto, $movimentazione = true, $crea_articoli = [], $tipi_riferimenti = [], $id_riferimenti = [], $tipi_riferimenti_vendita = [], $id_riferimenti_vendita = [], $update_info = [], $serials = [], $qta_sede = [])
     {
+        include_once __DIR__.'/../../../modules/mncs/shared/importfe-mix.php';
+
         $info = $this->getRitenutaRivalsa();
 
         $righe = $this->getRighe();
@@ -314,11 +316,19 @@ class FatturaOrdinaria extends FatturaElettronica
                 }
             }
 
+            // MNCS: quote per sede (Mix), solo per le righe articolo con quantità positiva
+            $quote = !empty($articolo) && $riga['Quantita'] > 0 ? mncs_importfe_quote($qta_sede[$key] ?? []) : [];
+
             if (!empty($articolo)) {
                 $articolo->id_conto_acquisto = $conto[$key] ?: null;
                 $articolo->save();
 
                 $obj = Articolo::build($fattura, $articolo);
+
+                // MNCS: la riga nasce sulla prima sede con quota > 0 (prima del primo save, nessuno storno)
+                if (!empty($quote)) {
+                    $obj->id_sede = array_key_first($quote);
+                }
 
                 $obj->movimentazione($movimentazione);
 
@@ -363,6 +373,15 @@ class FatturaOrdinaria extends FatturaElettronica
                     $obj->serials = $serials_rif;
                     $has_serial_riferimento = true;
                 }
+            }
+
+            // MNCS: riga da documento che ha già movimentato (es. DDT) → nessuna suddivisione, sede della riga di origine.
+            // Riga con seriali ereditati → nessuna suddivisione (la validazione blocca già il caso con più sedi).
+            if (!empty($quote) && $obj->hasOriginalComponent() && mncs_importfe_origine_movimentata($obj->getOriginalComponent())) {
+                $quote = [];
+                $obj->id_sede = $obj->getOriginalComponent()->id_sede ?: 0;
+            } elseif ($has_serial_riferimento && count($quote) > 1) {
+                $quote = [array_key_first($quote) => array_sum($quote)];
             }
 
             if (!empty($tipi_riferimenti_vendita[$key])) {
@@ -414,7 +433,9 @@ class FatturaOrdinaria extends FatturaElettronica
 
                 // Prezzo e quantità
                 $obj->prezzo_unitario = $prezzo;
-                $obj->qta = $qta;
+                // MNCS: in Mix la riga prende solo la quota della prima sede (riscalata sulla UM del documento)
+                $fattore_mix = $qta / $riga['Quantita'];
+                $obj->qta = !empty($quote) ? reset($quote) * $fattore_mix : $qta;
 
                 if (!empty($riga['UnitaMisura'])) {
                     if (!empty($articolo->um) && !empty($articolo->um_secondaria) && !empty((float) $articolo->fattore_um_secondaria) && $riga['UnitaMisura'] == $articolo->um_secondaria) {
@@ -587,6 +608,11 @@ class FatturaOrdinaria extends FatturaElettronica
             }
 
             $obj->save();
+
+            // MNCS: una riga aggiuntiva per ogni altra sede con quota > 0
+            if (!$is_descrizione && count($quote) > 1) {
+                mncs_importfe_split($obj, array_slice($quote, 1, null, true), $fattore_mix, $movimentazione);
+            }
         }
 
         // Ripristino l'impostazione iniziale di evasione quantità

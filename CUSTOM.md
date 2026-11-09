@@ -16,6 +16,68 @@ vanno ri-controllati a ogni allineamento).
 
 ---
 
+## 2026-11-09 — Import FE: carico giacenze su più sedi ("Mix")
+
+**Obiettivo:** caricare una fattura d'acquisto riepilogativa (importata da SDI) su più sedi di
+magazzino senza passare dai DDT.
+
+**Base upstream già presente (OSM 2.12):** `co_righe_documenti.id_sede` e
+`Article::movimentaMagazzino()` che movimenta sulla sede **della riga**. Nessuno schema nuovo.
+
+**Comportamento:**
+- La "Sede destinazione" dell'import diventa **obbligatoria** (prima era preselezionata su Sede legale)
+  e offre le sedi aziendali più **Mix** (solo per fatture ordinarie, non semplificate).
+- Con Mix ogni riga mostra un input quantità per sede, un bottone **"Tutto qui"** (tutta la qta in
+  quella sede, 0 nelle altre) e il totale inserito rispetto alla qta XML. Al click su "Importa" la
+  somma deve coincidere per ogni riga articolo (articolo selezionato o "Nuovo articolo" spuntato).
+  Lo stesso controllo è ripetuto lato server prima di creare la fattura.
+- In salvataggio una riga XML diventa **una riga fattura per ogni sede con quota > 0**, ognuna col
+  proprio `id_sede`: il movimento nasce già sulla sede giusta, senza movimenti di storno. In Mix la
+  testata prende Sede legale (0).
+
+**File toccati:**
+- `modules/mncs/shared/importfe-mix.php` `[CUSTOM]` (nuovo): `mncs_importfe_sedi()` (Sede legale +
+  `an_sedi` dell'Azienda predefinita), `mncs_importfe_quote()`, `mncs_importfe_riga_origine()` /
+  `mncs_importfe_origine_movimentata()`, `mncs_importfe_valida_mix()` (somma = qta XML; stesse condizioni
+  "è articolo" di `saveRighe`; esclude qta ≤ 0 e righe da DDT; niente seriali — inseriti o ereditati
+  dall'origine — su più sedi), `mncs_importfe_split()` (`replicate()` della riga senza `qta`/`qta_evasa`,
+  **ripristino dell'origine** — `Component::replicate()` la azzera — poi `id_sede` + quota → `save()`
+  movimenta e somma l'evasione sull'ordine).
+- `plugins/importFE/generate.php` `[CORE]`: select sede di testata (valori statici + Mix, required,
+  niente default; prima `ajax-source: sedi_azienda`, `value: 0`); riga `.mncs-mix` di input
+  `qta_sede[$key][$id_sede]` nell'header di ogni riga con qta > 0, **disabilitati** fuori da Mix (non
+  inviati: limite `max_input_vars`); JS per visibilità, totali, "Tutto qui" e blocco dell'invio (sul click
+  del bottone submit, perché `init.js` fa `$('form').off('submit')`); righe collegate a DDT non validate.
+- `plugins/importFE/actions.php` `[CORE]` (case `generate`): con Mix valida le quote, passando anche i
+  riferimenti riga (errore →
+  flash + redirect, nessuna fattura creata), passa `qta_sede` in `$info` e `id_sede_destinazione = 0`.
+- `plugins/importFE/src/FatturaElettronica.php` `[CORE]`: `save()` passa `$info['qta_sede'] ?? []` a
+  `saveRighe`.
+- `plugins/importFE/src/FatturaOrdinaria.php` `[CORE]`: `saveRighe(..., $qta_sede = [])`: `id_sede` =
+  prima sede con quota prima del primo `save()`; `qta` = quota della prima sede (riscalata sulla
+  conversione UM); dopo il `save()` finale, `mncs_importfe_split()` per le altre sedi. Righe collegate
+  a un documento che ha già movimentato (DDT): nessuna suddivisione e sede della riga di origine. Righe
+  con seriali ereditati: nessuna suddivisione (tutta la qta sulla prima sede). Qta ≤ 0: quote ignorate.
+
+**Commit:** (vedi git log)
+
+**Caveat:**
+- Import automatico (`type=auto`) invariato: usa la sede predefinita come prima.
+- La sede di testata non segue più i permessi sedi dell'utente (`sedi_azienda` filtrava per i non
+  amministratori): ora elenca tutte le sedi dell'Azienda predefinita.
+- In Mix il collegamento a vendita (`co_riferimenti_righe`) resta solo sulla prima riga della
+  suddivisione; i seriali non si possono suddividere (bloccato).
+- In Mix le righe con quantità negativa (resi) non hanno quote: vanno sulla sede di testata (Sede legale).
+- Se la validazione server fallisce (solo se il controllo JS è aggirato) si torna alla lista import e le
+  scelte del form vanno perse.
+- Il server non verifica che le sedi inviate siano sedi aziendali (punto aperto, vedi permessi sopra).
+- La lista righe della fattura non mostra la sede della riga: il badge upstream è mascherato
+  dall'override `modules/fatture/custom/row-list.php`.
+- Al merge upstream: conflitti probabili in `plugins/importFE/{generate,actions}.php` e
+  `src/FatturaOrdinaria.php` (blocchi marcati `MNCS`).
+
+---
+
 ## 2026-10-30 — Build: token GitHub per composer (build secret)
 
 **Obiettivo:** il deploy falliva su `composer install` con HTTP 429 da `codeload.github.com`

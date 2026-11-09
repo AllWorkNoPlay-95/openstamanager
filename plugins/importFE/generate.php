@@ -393,9 +393,21 @@ echo '
                 {[ "type": "checkbox", "label": "'.tr('Creazione seriali').'", "name": "flag_crea_seriali", "value": "'.setting('Creazione seriali in import FE').'", "help": "'.tr('Nel caso di righe contenenti serial number, il gestionale procede alla loro registrazione. Controllare che l\'XML della fattura di acquisto contenga il nodo\'CodiceTipo\' valorizzato con \'serial\' o \'Serial\' ').'." ]}
             </div>
         </div>
-        <div class="row">
+        <div class="row">';
+
+// MNCS: sede obbligatoria, con opzione "Mix" (quote per sede su ogni riga) solo per fatture ordinarie
+include_once __DIR__.'/../../modules/mncs/shared/importfe-mix.php';
+$mncs_sedi = mncs_importfe_sedi();
+$mncs_sedi_list = [];
+foreach ($mncs_sedi as $id_sede => $nome_sede) {
+    $mncs_sedi_list[] = ['id' => (string) $id_sede, 'text' => $nome_sede]; // id stringa: "0" (Sede legale) resta un'opzione valida
+}
+if ($fattura_pa instanceof Plugins\ImportFE\FatturaOrdinaria) {
+    $mncs_sedi_list[] = ['id' => 'mix', 'text' => tr('Mix (quantità per sede su ogni riga)')];
+}
+echo '
             <div class="col-md-3">
-                {[ "type": "select", "label": "'.tr('Sede destinazione').'", "name": "id_sede_destinazione", "ajax-source": "sedi_azienda", "value": "0", "help": "'.tr('Sede di destinazione per la movimentazione degli articoli').'" ]}
+                {[ "type": "select", "label": "'.tr('Sede destinazione').'", "name": "id_sede_destinazione", "required": 1, "values": '.json_encode($mncs_sedi_list).', "value": "", "help": "'.tr('Sede di destinazione per la movimentazione degli articoli. Con Mix si indica la quantità per sede su ogni riga').'" ]}
             </div>';
 
 $ritenuta = $dati_generali['DatiRitenuta'];
@@ -743,7 +755,28 @@ if (!empty($righe)) {
                                 <i class="fa fa-plus"></i>
                                 </button>
                             </div>
-                        </div>
+                        </div>';
+
+            // MNCS: quote per sede (visibili e abilitate solo con sede "Mix"; non per quantità negative)
+            if ($qta > 0) {
+                echo '
+                        <div class="row mncs-mix hidden" data-key="'.$key.'" data-qta="'.(float) $qta.'">';
+                foreach ($mncs_sedi as $id_sede => $nome_sede) {
+                    echo '
+                            <div class="col-md-2">
+                                <label>'.htmlspecialchars((string) $nome_sede).'</label>
+                                <input type="number" step="any" min="0" class="form-control mncs-qta-sede" name="qta_sede['.$key.']['.$id_sede.']" value="" disabled>
+                                <button type="button" class="btn btn-xs btn-default btn-block mncs-tutto-qui">'.tr('Tutto qui').'</button>
+                            </div>';
+                }
+                echo '
+                            <div class="col-md-2">
+                                <label>'.tr('Totale').'</label>
+                                <p class="form-control-static"><b class="mncs-mix-tot">0</b> / '.numberFormat($qta, 'qta').' '.$um.'</p>
+                            </div>
+                        </div>';
+            }
+            echo '
                     </div>
                     <div class="card-body">
                         <div class="row">
@@ -1296,6 +1329,65 @@ $("#flag_crea_seriali").on("change", function() {
         $("[id^=\'serial\']").attr("disabled", false);
     } else {
         $("[id^=\'serial\']").attr("disabled", true);
+    }
+});
+
+// MNCS: quote per sede (Mix)
+function mncsMixTotale(riga) {
+    let totale = 0;
+    riga.find(".mncs-qta-sede").each(function() {
+        totale += parseFloat($(this).val()) || 0;
+    });
+    const ok = Math.abs(totale - parseFloat(riga.data("qta"))) < 0.0001;
+    riga.find(".mncs-mix-tot").text(Math.round(totale * 10000) / 10000).toggleClass("text-danger", !ok).toggleClass("text-success", ok);
+
+    return ok;
+}
+
+// Righe da validare: articolo (selezionato o da creare) e non collegate a un DDT (già movimentato)
+function mncsMixRigaDaValidare(key) {
+    const is_articolo = !!$("select[name=\'articoli[" + key + "]\']").val() || $("input[name=\'crea_articoli[" + key + "]\']").is(":checked");
+    const da_ddt = ($("#tipo_riga_riferimento_" + key).val() || "").indexOf("DDT") !== -1;
+
+    return is_articolo && !da_ddt;
+}
+
+// Input disabilitati fuori da Mix: non vengono inviati (limite max_input_vars)
+$("#id_sede_destinazione").on("change", function() {
+    const mix = $(this).val() === "mix";
+    $(".mncs-mix").toggleClass("hidden", !mix);
+    $(".mncs-qta-sede").prop("disabled", !mix);
+});
+
+$(".mncs-qta-sede").on("input change", function() {
+    mncsMixTotale($(this).closest(".mncs-mix"));
+});
+
+$(".mncs-tutto-qui").on("click", function() {
+    const riga = $(this).closest(".mncs-mix");
+    riga.find(".mncs-qta-sede").val(0);
+    $(this).siblings(".mncs-qta-sede").val(riga.data("qta"));
+    mncsMixTotale(riga);
+});
+
+// Su click (non submit): init.js fa $("form").off("submit") e rimuoverebbe il listener
+$(document).on("click", "form:has(input[name=op][value=generate]) button[type=submit]", function(e) {
+    if ($("#id_sede_destinazione").val() !== "mix") {
+        return;
+    }
+
+    let errori = [];
+    $(".mncs-mix").each(function() {
+        const key = $(this).data("key");
+        if (mncsMixRigaDaValidare(key) && !mncsMixTotale($(this))) {
+            errori.push(key + 1);
+        }
+    });
+
+    if (errori.length) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        swal("'.tr('Quantità per sede non corrette').'", "'.tr('La somma delle quantità per sede non corrisponde alla quantità della fattura nelle righe').': " + errori.join(", "), "error");
     }
 });
 </script>';
